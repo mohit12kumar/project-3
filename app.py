@@ -15,51 +15,65 @@ st.set_page_config(page_title="Flight Prediction System", layout="centered")
 st.title("✈ Flight Delay & Cancellation Prediction")
 
 # ==============================
-# MODEL LOADER (UPDATED SAFE)
+# RELOAD BUTTON (IMPORTANT)
+# ==============================
+if st.button("🔄 Reload Models"):
+    st.cache_resource.clear()
+    st.success("✅ Cache cleared. Reload app.")
+
+# ==============================
+# MODEL LOADER (FINAL FIXED)
 # ==============================
 @st.cache_resource
 def load_model(mode, model_name):
 
     def download(file_id, output):
-        if not os.path.exists(output):
-            url = f"https://drive.google.com/uc?id={file_id}"
-            gdown.download(url, output, quiet=True)
+        # 🔥 DELETE OLD FILE
+        if os.path.exists(output):
+            os.remove(output)
 
+        url = f"https://drive.google.com/uc?id={file_id}"
+        gdown.download(url, output, quiet=False)
+
+    # ==============================
     # DELAY MODELS
+    # ==============================
     delay_links = {
-        "Random Forest": ("1kcjKFn-59lK1S8QHv1rHzcm4sL2VLTSU", "rf_delay.pkl"),
-        "Decision Tree": ("1PZdtmAnt15nj1PC1rB8aW0kZIssgU8IM", "dt_delay.pkl"),
-        "Logistic Regression": ("1cL9xaBH6WU_UlXAMpFlU8zenIpY7jgNf", "lr_delay.pkl"),
-        "KNN": ("1hAMdiSjssNoXRGmzcLcnm8RsivyKStA2", "knn_delay.pkl"),
-        "SVM": ("1pw_1yVInCY_N5prysDQT7_i78v2LblBU", "svm_delay.pkl"),
-        "XGBoost": ("1B6gZvXZCizgN9j8C9sBxpeZhLc7UeJI4", "xgb_delay.pkl")
+        "Random Forest": ("1kcjKFn-59lK1S8QHv1rHzcm4sL2VLTSU", "random_forest_model.pkl"),
+        "Decision Tree": ("1PZdtmAnt15nj1PC1rB8aW0kZIssgU8IM", "decision_tree_model.pkl"),
+        "Logistic Regression": ("1cL9xaBH6WU_UlXAMpFlU8zenIpY7jgNf", "LogisticRegression.pkl"),
+        "KNN": ("1hAMdiSjssNoXRGmzcLcnm8RsivyKStA2", "KNeighborsClassifier.pkl"),
+        "SVM": ("1pw_1yVInCY_N5prysDQT7_i78v2LblBU", "LinearSVC.pkl"),
+        "XGBoost": ("YOUR_NEW_FILE_ID", "XGBClassifier.pkl")  # 🔥 UPDATE HERE
     }
 
+    # ==============================
     # CANCELLATION MODELS
+    # ==============================
     cancel_links = {
         "Random Forest": ("1AJxhnPsOL5VRtXqB8TO52RFAAzKQa_dI", "rf_cancel.pkl"),
         "Decision Tree": ("1VGat3BhFmQwkjrQKDUDPWW12_FHndjVv", "dt_cancel.pkl"),
         "Logistic Regression": ("16k7XQcInCTNuveWDSPiTLbhfgRPH2bUi", "lr_cancel.pkl"),
         "KNN": ("1qnC3xUyeJ8SDi455THh2_IbSmc4BVQgi", "knn_cancel.pkl"),
         "SVM": ("1ppy1emNTbhbi0YP0CxWu-cAJXXhNorNV", "svm_cancel.pkl"),
-        "XGBoost": ("1SJa04KaD6Gjx8TwOjT_2C2_Q5br3gXAW", "xgb_cancel.pkl")
+        "XGBoost": ("YOUR_NEW_FILE_ID", "XGBClassifier.pkl")  # 🔥 UPDATE HERE
     }
 
     links = delay_links if mode == "Delay" else cancel_links
 
-    # Safe model selection
     try:
         file_id, filename = links[model_name]
     except:
         st.error("❌ Model not found")
         return None
 
-    # Download model
+    # Download fresh model
     download(file_id, filename)
 
-    # Load model safely
+    # Load safely
     try:
-        return joblib.load(filename)
+        model = joblib.load(filename)
+        return model
     except Exception as e:
         st.error(f"❌ Model loading failed: {e}")
         return None
@@ -82,10 +96,13 @@ model_list = [
 model_choice = st.selectbox("Select Model", model_list)
 
 st.success(f"✅ Using Model: {model_choice} ({mode})")
-st.info("📥 Model loads only once and will be cached for faster use")
+st.info("📥 Model will download only once (cached)")
 
-# Load model
 model = load_model(mode, model_choice)
+
+# Debug (optional)
+if model is not None:
+    st.write("Model type:", type(model))
 
 # ==============================
 # INPUT UI
@@ -132,7 +149,7 @@ if st.button("Predict"):
             st.error(f"Prediction Error: {e}")
 
 # ==============================
-# BATCH PREDICTION
+# BATCH PREDICTION (FIXED)
 # ==============================
 st.header("📂 Batch Prediction")
 
@@ -142,21 +159,28 @@ if uploaded_file is not None:
 
     try:
         df = pd.read_csv(uploaded_file)
+
         st.write("Preview:")
         st.dataframe(df.head())
 
         if st.button("Predict Batch"):
 
-            df.columns = [col.upper() for col in df.columns]
+            # 🔥 FIX COLUMN NAMES
+            df.columns = [col.strip().lower() for col in df.columns]
+
+            df = df.rename(columns={
+                "weekend": "is_weekend"
+            })
 
             required = [
-                "AIRLINE", "ORIGIN", "DEST", "DEP_DELAY",
-                "DISTANCE", "CRS_DEP_TIME", "MONTH",
-                "DAY_OF_WEEK", "WEEKEND"
+                "airline", "origin", "dest", "dep_delay",
+                "distance", "crs_dep_time", "month",
+                "day_of_week", "is_weekend"
             ]
 
-            if "WEEKEND" not in df.columns:
-                df["WEEKEND"] = df["DAY_OF_WEEK"].apply(
+            # Auto-create weekend if missing
+            if "is_weekend" not in df.columns:
+                df["is_weekend"] = df["day_of_week"].apply(
                     lambda x: 1 if x in [5, 6] else 0
                 )
 
