@@ -116,6 +116,13 @@ if st.button("Predict Delay"):
 # ==============================
 # BATCH PREDICTION
 # ==============================
+# ==============================
+# BATCH PREDICTION
+# ==============================
+st.header("📂 Batch Prediction (CSV Upload)")
+
+uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
+
 if uploaded_file is not None:
     try:
         df = pd.read_csv(uploaded_file)
@@ -125,10 +132,8 @@ if uploaded_file is not None:
 
         if st.button("Predict for All Rows"):
 
-            # Convert all columns to uppercase (match training)
             df.columns = [col.upper() for col in df.columns]
 
-            # Required columns EXACTLY as training
             required_columns = [
                 "AIRLINE", "ORIGIN", "DEST", "DEP_DELAY",
                 "DISTANCE", "CRS_DEP_TIME", "MONTH",
@@ -146,7 +151,6 @@ if uploaded_file is not None:
                     st.error("❌ DAY_OF_WEEK column required")
                     st.stop()
 
-            # Check missing
             missing = [col for col in required_columns if col not in df.columns]
 
             if missing:
