@@ -4,4 +4,3 @@ scikit-learn
 joblib
 xgboost
 gdown
-tensorflow-cpu
