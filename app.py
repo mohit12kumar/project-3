@@ -15,27 +15,33 @@ st.set_page_config(page_title="Flight Prediction System", layout="centered")
 st.title("✈ Flight Delay & Cancellation Prediction")
 
 # ==============================
-# MODEL LOADER
+# MODEL LOADER (FIXED)
 # ==============================
-@st.cache_resource
 def load_model(mode, model_name):
 
     def download(file_id, output):
-        if not os.path.exists(output):
-            url = f"https://drive.google.com/uc?id={file_id}"
-            gdown.download(url, output, quiet=True)
+        # 🔥 DELETE OLD FILE (VERY IMPORTANT)
+        if os.path.exists(output):
+            os.remove(output)
 
-    # DELAY MODELS
+        url = f"https://drive.google.com/uc?id={file_id}"
+        gdown.download(url, output, quiet=False)
+
+    # ==============================
+    # DELAY MODELS (UPDATED XG FILE)
+    # ==============================
     delay_links = {
         "Random Forest": ("1kcjKFn-59lK1S8QHv1rHzcm4sL2VLTSU", "rf_delay.pkl"),
         "Decision Tree": ("1PZdtmAnt15nj1PC1rB8aW0kZIssgU8IM", "dt_delay.pkl"),
         "Logistic Regression": ("1cL9xaBH6WU_UlXAMpFlU8zenIpY7jgNf", "lr_delay.pkl"),
         "KNN": ("1hAMdiSjssNoXRGmzcLcnm8RsivyKStA2", "knn_delay.pkl"),
         "SVM": ("1pw_1yVInCY_N5prysDQT7_i78v2LblBU", "svm_delay.pkl"),
-        "XGBoost": ("1B6gZvXZCizgN9j8C9sBxpeZhLc7UeJI4", "xgb_delay.pkl")
+        "XGBoost": ("1B6gZvXZCizgN9j8C9sBxpeZhLc7UeJI4", "xgb_delay.pkl")  # ✅ YOUR UPDATED FILE
     }
 
+    # ==============================
     # CANCELLATION MODELS
+    # ==============================
     cancel_links = {
         "Random Forest": ("1AJxhnPsOL5VRtXqB8TO52RFAAzKQa_dI", "rf_cancel.pkl"),
         "Decision Tree": ("1VGat3BhFmQwkjrQKDUDPWW12_FHndjVv", "dt_cancel.pkl"),
@@ -49,6 +55,7 @@ def load_model(mode, model_name):
 
     file_id, filename = links[model_name]
 
+    # 🔥 FORCE NEW DOWNLOAD
     download(file_id, filename)
 
     try:
@@ -59,7 +66,7 @@ def load_model(mode, model_name):
 
 
 # ==============================
-# MODEL ACCURACY DATA
+# ACCURACY DATA
 # ==============================
 delay_accuracy = {
     "Random Forest": 91.90,
@@ -80,7 +87,7 @@ cancel_accuracy = {
 }
 
 # ==============================
-# MODE + MODEL SELECTION
+# MODE + MODEL
 # ==============================
 mode = st.selectbox("Select Prediction Type", ["Delay", "Cancellation"])
 
@@ -96,11 +103,15 @@ else:
 st.success(f"✅ Using Model: {model_choice} ({mode})")
 st.info(f"📊 Model Accuracy: {acc}%")
 
+# Reload button
+if st.button("🔄 Reload Models"):
+    st.success("Reloading models...")
+
 # Load model
 model = load_model(mode, model_choice)
 
 # ==============================
-# INPUT UI
+# SINGLE INPUT
 # ==============================
 st.header("🧍 Single Prediction")
 
@@ -154,51 +165,37 @@ if uploaded_file is not None:
 
     try:
         df = pd.read_csv(uploaded_file)
-        st.write("Preview:")
         st.dataframe(df.head())
 
         if st.button("Predict Batch"):
 
-            # FIX column names
             df.columns = [col.strip().lower() for col in df.columns]
-
             df = df.rename(columns={"weekend": "is_weekend"})
-
-            required = [
-                "airline", "origin", "dest", "dep_delay",
-                "distance", "crs_dep_time", "month",
-                "day_of_week", "is_weekend"
-            ]
 
             if "is_weekend" not in df.columns:
                 df["is_weekend"] = df["day_of_week"].apply(
                     lambda x: 1 if x in [5, 6] else 0
                 )
 
+            required = [
+                "airline","origin","dest","dep_delay",
+                "distance","crs_dep_time","month",
+                "day_of_week","is_weekend"
+            ]
+
             df_model = df[required]
 
             preds = model.predict(df_model)
 
             if mode == "Delay":
-                df["RESULT"] = ["Delayed" if x == 1 else "On Time" for x in preds]
+                df["RESULT"] = ["Delayed" if x==1 else "On Time" for x in preds]
             else:
-                df["RESULT"] = ["Cancelled" if x == 1 else "Not Cancelled" for x in preds]
+                df["RESULT"] = ["Cancelled" if x==1 else "Not Cancelled" for x in preds]
 
-            st.success("✅ Batch Prediction Done")
+            st.success("✅ Done")
             st.dataframe(df)
 
-            csv = df.to_csv(index=False).encode()
-            st.download_button("📥 Download Results", csv, "results.csv")
+            st.download_button("Download CSV", df.to_csv(index=False), "result.csv")
 
     except Exception as e:
         st.error(f"CSV Error: {e}")
-
-# ==============================
-# SHOW MODEL COMPARISON
-# ==============================
-st.header("📊 Model Comparison")
-
-if mode == "Delay":
-    st.dataframe(pd.DataFrame(delay_accuracy.items(), columns=["Model", "Accuracy"]))
-else:
-    st.dataframe(pd.DataFrame(cancel_accuracy.items(), columns=["Model", "Accuracy"]))
