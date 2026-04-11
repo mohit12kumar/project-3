@@ -18,19 +18,19 @@ st.set_page_config(page_title="Flight Prediction System", layout="centered")
 st.title("✈ Flight Delay & Cancellation Prediction")
 
 # ==============================
-# ALIGN FEATURES (FIXED)
+# ALIGN FEATURES
 # ==============================
 def align_features(model, df):
     try:
         if hasattr(model, "feature_names_in_"):
             expected = model.feature_names_in_
-            df = df[expected]   # strict match
+            df = df[expected]
     except:
         pass
     return df
 
 # ==============================
-# SAFE PREDICT (FIXED)
+# SAFE PREDICT (FINAL FIX)
 # ==============================
 def safe_predict(model, data):
 
@@ -38,8 +38,18 @@ def safe_predict(model, data):
         return np.zeros(len(data))
 
     try:
-        # ALWAYS use numpy → avoids feature mismatch
         data = data.values
+
+        # Special handling for XGBoost
+        if "XGB" in str(type(model)):
+            try:
+                probs = model.predict_proba(data)[:, 1]
+                return (probs > 0.4).astype(int)
+            except:
+                import xgboost as xgb
+                dmatrix = xgb.DMatrix(data)
+                preds = model.get_booster().predict(dmatrix)
+                return (preds > 0.4).astype(int)
 
         return model.predict(data)
 
@@ -48,7 +58,7 @@ def safe_predict(model, data):
         return np.zeros(len(data))
 
 # ==============================
-# MODEL LOADER (CACHED)
+# MODEL LOADER
 # ==============================
 @st.cache_resource
 def load_model(mode, model_name):
@@ -74,7 +84,8 @@ def load_model(mode, model_name):
     def download(file_id, output):
         if not os.path.exists(output):
             url = f"https://drive.google.com/uc?id={file_id}"
-            gdown.download(url, output, quiet=True)
+            st.info(f"Downloading {output}...")
+            gdown.download(url, output, quiet=False)
 
     try:
         links = delay_links if mode == "Delay" else cancel_links
@@ -82,14 +93,17 @@ def load_model(mode, model_name):
 
         download(file_id, filename)
 
+        st.write(f"📦 Using model: {filename}")
+
         model = joblib.load(filename)
         return model
 
-    except:
+    except Exception as e:
+        st.error(f"Model Load Error: {e}")
         return None
 
 # ==============================
-# ACCURACY
+# ACCURACY DISPLAY
 # ==============================
 delay_accuracy = {
     "Random Forest": 91.90,
@@ -110,7 +124,7 @@ cancel_accuracy = {
 }
 
 # ==============================
-# MODE + MODEL
+# MODE + MODEL SELECT
 # ==============================
 mode = st.selectbox("Select Prediction Type", ["Delay", "Cancellation"])
 
