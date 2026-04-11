@@ -119,7 +119,7 @@ if st.button("Predict Delay"):
         st.error(f"Error: {e}")
 
 # ==============================
-# BATCH PREDICTION
+# BATCH PREDICTION (FIXED)
 # ==============================
 st.header("📂 Batch Prediction (CSV Upload)")
 
@@ -128,27 +128,51 @@ uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
 if uploaded_file is not None:
     try:
         df = pd.read_csv(uploaded_file)
+        st.write("📄 Preview:")
         st.dataframe(df.head())
 
         if st.button("Predict for All Rows"):
+
+            # Convert to uppercase for matching
+            df.columns = [col.upper() for col in df.columns]
+
+            # Column mapping
+            column_mapping = {
+                "AIRLINE": "Airline",
+                "ORIGIN": "Origin",
+                "DEST": "Destination",
+                "DEP_DELAY": "Departure Delay",
+                "DISTANCE": "Distance",
+                "CRS_DEP_TIME": "CRS Dep Time",
+                "MONTH": "Month",
+                "DAY_OF_WEEK": "Day of Week",
+                "WEEKEND": "Weekend"
+            }
+
+            df = df.rename(columns=column_mapping)
 
             required_columns = [
                 "Airline", "Origin", "Destination", "Departure Delay",
                 "Distance", "CRS Dep Time", "Month", "Day of Week", "Weekend"
             ]
 
-            df = df[required_columns]
+            missing = [col for col in required_columns if col not in df.columns]
 
-            model = models_dict[model_choice]
-            predictions = model.predict(df)
+            if missing:
+                st.error(f"❌ Missing columns: {missing}")
+            else:
+                df = df[required_columns]
 
-            df["Result"] = ["Delayed" if x == 1 else "On Time" for x in predictions]
+                model = models_dict[model_choice]
+                predictions = model.predict(df)
 
-            st.success("✅ Batch Prediction Completed")
-            st.dataframe(df)
+                df["Result"] = ["Delayed" if x == 1 else "On Time" for x in predictions]
 
-            csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Download Results", csv, "results.csv", "text/csv")
+                st.success("✅ Batch Prediction Completed")
+                st.dataframe(df)
+
+                csv = df.to_csv(index=False).encode('utf-8')
+                st.download_button("📥 Download Results", csv, "results.csv", "text/csv")
 
     except Exception as e:
         st.error(f"CSV Error: {e}")
