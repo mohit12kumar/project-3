@@ -1,4 +1,3 @@
-
 # ==============================
 # IMPORTS
 # ==============================
@@ -35,7 +34,7 @@ def align_features(model, df):
     return df
 
 # ==============================
-# SAFE PREDICT
+# SAFE PREDICT (✅ FIXED)
 # ==============================
 def safe_predict(model, data):
 
@@ -45,6 +44,17 @@ def safe_predict(model, data):
     try:
         data = data.values
 
+        # ✅ XGBoost Fix
+        if "XGB" in str(type(model)):
+            try:
+                return model.predict(data)
+            except:
+                import xgboost as xgb
+                dmatrix = xgb.DMatrix(data)
+                preds = model.get_booster().predict(dmatrix)
+                return (preds > 0.4).astype(int)
+
+        # ✅ Other Models
         if hasattr(model, "predict_proba"):
             probs = model.predict_proba(data)[:, 1]
             return (probs > 0.4).astype(int)
@@ -83,13 +93,11 @@ def load_model(mode, model_name):
 
     current_key = f"{mode}_{model_name}"
 
-    # Remove old model
     if "loaded_model_key" in st.session_state:
         if st.session_state["loaded_model_key"] != current_key:
             st.session_state.pop("model", None)
             st.session_state.pop("loaded_model_key", None)
 
-    # Load model
     if "model" not in st.session_state:
 
         if not os.path.exists(filename):
@@ -105,7 +113,7 @@ def load_model(mode, model_name):
     return st.session_state["model"]
 
 # ==============================
-# ACCURACY DISPLAY
+# ACCURACY
 # ==============================
 delay_accuracy = {
     "Random Forest": 91.90,
@@ -126,7 +134,7 @@ cancel_accuracy = {
 }
 
 # ==============================
-# MODE + MODEL SELECT
+# UI
 # ==============================
 mode = st.selectbox("Select Prediction Type", ["Delay", "Cancellation"])
 
@@ -142,11 +150,8 @@ st.info(f"Accuracy: {acc}%")
 
 model = load_model(mode, model_choice)
 
-if model is None:
-    st.error("❌ Model not available")
-
 # ==============================
-# INPUT UI
+# INPUT
 # ==============================
 st.header("📊 Enter Flight Details")
 
@@ -194,7 +199,7 @@ if st.button("🚀 Predict Now"):
         else:
             st.success("✅ Flight is Not Cancelled")
 
-    # Confidence
+    # Confidence (safe)
     try:
         if hasattr(model, "predict_proba"):
             prob = model.predict_proba(df.values)[0][1]
