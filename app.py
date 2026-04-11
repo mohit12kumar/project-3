@@ -14,59 +14,50 @@ import pandas as pd
 st.set_page_config(page_title="Flight Prediction System", layout="centered")
 st.title("✈ Flight Delay & Cancellation Prediction")
 
+st.write("🚀 App Loaded Successfully")
+
 # ==============================
-# 🔥 ALIGN FEATURES
+# ALIGN FEATURES
 # ==============================
 def align_features(model, df):
     try:
         expected = model.feature_names_in_
+        df.columns = [c.lower() for c in df.columns]
+        expected_lower = [c.lower() for c in expected]
+        df = df[expected_lower]
+        df.columns = expected
     except:
-        return df
-
-    df.columns = [c.lower() for c in df.columns]
-    expected_lower = [c.lower() for c in expected]
-
-    df = df[expected_lower]
-    df.columns = expected
-
+        pass
     return df
 
 # ==============================
-# 🔥 FINAL SAFE PREDICT (XG FIX)
+# SAFE PREDICT (NO CRASH)
 # ==============================
 def safe_predict(model, data):
-
     import numpy as np
 
-    # XGBoost FIX (FINAL)
-    if "XGB" in str(type(model)):
-        try:
-            import xgboost as xgb
+    if model is None:
+        return np.zeros(len(data))
 
+    try:
+        # XGBoost Safe Mode
+        if "XGB" in str(type(model)):
+            import xgboost as xgb
             booster = model.get_booster()
             dmatrix = xgb.DMatrix(data)
-
             preds = booster.predict(dmatrix)
-
             return (preds > 0.5).astype(int)
+        else:
+            return model.predict(data)
 
-        except Exception as e:
-            st.error(f"XGBoost Error: {e}")
-            return np.zeros(len(data))
-
-    else:
-        return model.predict(data)
+    except Exception as e:
+        st.warning("⚠ Model not compatible in this environment")
+        return np.zeros(len(data))
 
 # ==============================
-# MODEL LOADER
+# MODEL LOADER (SAFE)
 # ==============================
 def load_model(mode, model_name):
-
-    def download(file_id, output):
-        if os.path.exists(output):
-            os.remove(output)
-        url = f"https://drive.google.com/uc?id={file_id}"
-        gdown.download(url, output, quiet=True)
 
     delay_links = {
         "Random Forest": ("1kcjKFn-59lK1S8QHv1rHzcm4sL2VLTSU", "rf_delay.pkl"),
@@ -86,14 +77,23 @@ def load_model(mode, model_name):
         "XGBoost": ("1SJa04KaD6Gjx8TwOjT_2C2_Q5br3gXAW", "xgb_cancel.pkl")
     }
 
-    links = delay_links if mode == "Delay" else cancel_links
-    file_id, filename = links[model_name]
+    try:
+        def download(file_id, output):
+            if not os.path.exists(output):
+                url = f"https://drive.google.com/uc?id={file_id}"
+                gdown.download(url, output, quiet=True)
 
-    download(file_id, filename)
+        links = delay_links if mode == "Delay" else cancel_links
+        file_id, filename = links[model_name]
 
-    model = joblib.load(filename)
+        download(file_id, filename)
 
-    return model
+        model = joblib.load(filename)
+        return model
+
+    except:
+        st.warning(f"⚠ {model_name} failed to load")
+        return None
 
 # ==============================
 # ACCURACY
@@ -117,7 +117,7 @@ cancel_accuracy = {
 }
 
 # ==============================
-# MODE
+# MODE + MODEL
 # ==============================
 mode = st.selectbox("Select Prediction Type", ["Delay", "Cancellation"])
 
@@ -130,6 +130,9 @@ st.success(f"{model_choice} ({mode})")
 st.info(f"Accuracy: {acc}%")
 
 model = load_model(mode, model_choice)
+
+if model is None:
+    st.error("❌ Model not available, try another")
 
 # ==============================
 # SINGLE PREDICTION
