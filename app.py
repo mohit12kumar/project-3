@@ -1,3 +1,4 @@
+```python
 # ==============================
 # IMPORTS
 # ==============================
@@ -44,15 +45,9 @@ def safe_predict(model, data):
     try:
         data = data.values
 
-        if "XGB" in str(type(model)):
-            try:
-                probs = model.predict_proba(data)[:, 1]
-                return (probs > 0.4).astype(int)
-            except:
-                import xgboost as xgb
-                dmatrix = xgb.DMatrix(data)
-                preds = model.get_booster().predict(dmatrix)
-                return (preds > 0.4).astype(int)
+        if hasattr(model, "predict_proba"):
+            probs = model.predict_proba(data)[:, 1]
+            return (probs > 0.4).astype(int)
 
         return model.predict(data)
 
@@ -61,7 +56,7 @@ def safe_predict(model, data):
         return np.zeros(len(data))
 
 # ==============================
-# MODEL LOADER (ONE MODEL ONLY)
+# MODEL LOADER
 # ==============================
 def load_model(mode, model_name):
 
@@ -88,22 +83,18 @@ def load_model(mode, model_name):
 
     current_key = f"{mode}_{model_name}"
 
-    # ==============================
-    # REMOVE OLD MODEL FROM MEMORY
-    # ==============================
+    # Remove old model
     if "loaded_model_key" in st.session_state:
         if st.session_state["loaded_model_key"] != current_key:
             st.session_state.pop("model", None)
             st.session_state.pop("loaded_model_key", None)
 
-    # ==============================
-    # LOAD NEW MODEL
-    # ==============================
+    # Load model
     if "model" not in st.session_state:
 
         if not os.path.exists(filename):
             url = f"https://drive.google.com/uc?id={file_id}"
-            st.warning(f"⬇ Downloading {model_name} (first time)...")
+            st.warning(f"⬇ Downloading {model_name}...")
             gdown.download(url, filename, quiet=False)
         else:
             st.success(f"⚡ Using cached file: {filename}")
@@ -187,19 +178,25 @@ if st.button("🚀 Predict Now"):
                                "day_of_week","is_weekend"])
 
     df = align_features(model, df)
-
     pred = safe_predict(model, df)[0]
 
+    st.markdown("---")
     st.subheader("📢 Prediction Result")
 
-    if mode=="Delay":
-        st.error("⚠ Flight is Delayed") if pred==1 else st.success("✅ Flight is On Time")
+    if mode == "Delay":
+        if pred == 1:
+            st.error("⚠ Flight is Delayed")
+        else:
+            st.success("✅ Flight is On Time")
     else:
-        st.error("⚠ Flight is Cancelled") if pred==1 else st.success("✅ Flight is Not Cancelled")
+        if pred == 1:
+            st.error("⚠ Flight is Cancelled")
+        else:
+            st.success("✅ Flight is Not Cancelled")
 
     # Confidence
     try:
-        if "XGB" in str(type(model)):
+        if hasattr(model, "predict_proba"):
             prob = model.predict_proba(df.values)[0][1]
             st.info(f"📊 Confidence: {prob:.2f}")
     except:
@@ -219,7 +216,6 @@ if file:
     if st.button("Run Prediction"):
 
         df.columns = [c.strip().lower() for c in df.columns]
-
         df_new = df.copy()
 
         if "is_weekend" not in df_new.columns:
@@ -231,7 +227,6 @@ if file:
                 df_new["is_weekend"] = 0
 
         df_new = align_features(model, df_new)
-
         preds = safe_predict(model, df_new)
 
         df["Result"] = ["Delayed" if x==1 else "On Time" for x in preds] if mode=="Delay" \
@@ -241,3 +236,4 @@ if file:
         st.dataframe(df)
 
         st.download_button("Download CSV", df.to_csv(index=False), "output.csv")
+```
