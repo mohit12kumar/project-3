@@ -15,7 +15,7 @@ st.set_page_config(page_title="Flight Prediction System", layout="centered")
 st.title("✈ Flight Delay & Cancellation Prediction")
 
 # ==============================
-# 🔥 ALIGN FEATURES (AUTO FIX)
+# 🔥 ALIGN FEATURES
 # ==============================
 def align_features(model, df):
     try:
@@ -32,16 +32,28 @@ def align_features(model, df):
     return df
 
 # ==============================
-# 🔥 SAFE PREDICT (XG FIX)
+# 🔥 FINAL SAFE PREDICT (XG FIX)
 # ==============================
 def safe_predict(model, data):
 
+    import numpy as np
+
+    # XGBoost FIX (FINAL)
     if "XGB" in str(type(model)):
         try:
             import xgboost as xgb
-            return model.predict(xgb.DMatrix(data))
-        except:
-            return model.predict(data)
+
+            booster = model.get_booster()
+            dmatrix = xgb.DMatrix(data)
+
+            preds = booster.predict(dmatrix)
+
+            return (preds > 0.5).astype(int)
+
+        except Exception as e:
+            st.error(f"XGBoost Error: {e}")
+            return np.zeros(len(data))
+
     else:
         return model.predict(data)
 
@@ -81,16 +93,6 @@ def load_model(mode, model_name):
 
     model = joblib.load(filename)
 
-    # 🔥 FIX XGBOOST ERROR
-    if "XGB" in str(type(model)):
-        try:
-            model.get_booster()
-        except:
-            pass
-
-        if not hasattr(model, "use_label_encoder"):
-            model.use_label_encoder = False
-
     return model
 
 # ==============================
@@ -118,6 +120,7 @@ cancel_accuracy = {
 # MODE
 # ==============================
 mode = st.selectbox("Select Prediction Type", ["Delay", "Cancellation"])
+
 model_choice = st.selectbox("Select Model",
     ["Random Forest","Decision Tree","Logistic Regression","KNN","SVM","XGBoost"])
 
@@ -165,7 +168,7 @@ if st.button("Predict"):
         st.success("⚠ Cancelled" if pred==1 else "✅ Not Cancelled")
 
 # ==============================
-# SMART BATCH
+# SMART CSV PREDICTION
 # ==============================
 st.header("📂 Smart CSV Prediction")
 
