@@ -76,9 +76,7 @@ if len(models_dict) == 0:
     st.error("❌ No models loaded")
 else:
     model_choice = st.selectbox("Select Model", list(models_dict.keys()))
-
-    if model_choice in model_accuracy:
-        st.success(f"📊 Accuracy: {model_accuracy[model_choice]}%")
+    st.success(f"📊 Accuracy: {model_accuracy.get(model_choice, 'N/A')}%")
 
 # ==============================
 # SINGLE PREDICTION
@@ -110,16 +108,13 @@ if st.button("Predict Delay"):
         model = models_dict[model_choice]
         pred = model.predict(data)[0]
 
-        if pred == 1:
-            st.error("⚠ Flight Delayed")
-        else:
-            st.success("✅ Flight On Time")
+        st.success("⚠ Flight Delayed" if pred == 1 else "✅ Flight On Time")
 
     except Exception as e:
         st.error(f"Error: {e}")
 
 # ==============================
-# BATCH PREDICTION (FIXED)
+# BATCH PREDICTION
 # ==============================
 st.header("📂 Batch Prediction (CSV Upload)")
 
@@ -133,10 +128,10 @@ if uploaded_file is not None:
 
         if st.button("Predict for All Rows"):
 
-            # Convert to uppercase for matching
+            # Normalize column names
             df.columns = [col.upper() for col in df.columns]
 
-            # Column mapping
+            # Mapping
             column_mapping = {
                 "AIRLINE": "Airline",
                 "ORIGIN": "Origin",
@@ -150,6 +145,17 @@ if uploaded_file is not None:
             }
 
             df = df.rename(columns=column_mapping)
+
+            # Create Weekend if missing
+            if "Weekend" not in df.columns:
+                if "Day of Week" in df.columns:
+                    df["Weekend"] = df["Day of Week"].apply(
+                        lambda x: 1 if x in [5, 6] else 0
+                    )
+                    st.info("ℹ️ Weekend column auto-created")
+                else:
+                    st.error("❌ 'Day of Week' column required")
+                    st.stop()
 
             required_columns = [
                 "Airline", "Origin", "Destination", "Departure Delay",
