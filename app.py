@@ -236,4 +236,3 @@ if file:
         st.dataframe(df)
 
         st.download_button("Download CSV", df.to_csv(index=False), "output.csv")
-```
