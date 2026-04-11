@@ -15,33 +15,28 @@ st.set_page_config(page_title="Flight Prediction System", layout="centered")
 st.title("✈ Flight Delay & Cancellation Prediction")
 
 # ==============================
-# MODEL LOADER (FIXED)
+# MODEL LOADER (FINAL FIXED)
 # ==============================
 def load_model(mode, model_name):
 
     def download(file_id, output):
-        # 🔥 DELETE OLD FILE (VERY IMPORTANT)
         if os.path.exists(output):
-            os.remove(output)
+            os.remove(output)  # 🔥 remove old file
 
         url = f"https://drive.google.com/uc?id={file_id}"
-        gdown.download(url, output, quiet=False)
+        gdown.download(url, output, quiet=True)
 
-    # ==============================
-    # DELAY MODELS (UPDATED XG FILE)
-    # ==============================
+    # DELAY MODELS
     delay_links = {
         "Random Forest": ("1kcjKFn-59lK1S8QHv1rHzcm4sL2VLTSU", "rf_delay.pkl"),
         "Decision Tree": ("1PZdtmAnt15nj1PC1rB8aW0kZIssgU8IM", "dt_delay.pkl"),
         "Logistic Regression": ("1cL9xaBH6WU_UlXAMpFlU8zenIpY7jgNf", "lr_delay.pkl"),
         "KNN": ("1hAMdiSjssNoXRGmzcLcnm8RsivyKStA2", "knn_delay.pkl"),
         "SVM": ("1pw_1yVInCY_N5prysDQT7_i78v2LblBU", "svm_delay.pkl"),
-        "XGBoost": ("1B6gZvXZCizgN9j8C9sBxpeZhLc7UeJI4", "xgb_delay.pkl")  # ✅ YOUR UPDATED FILE
+        "XGBoost": ("1B6gZvXZCizgN9j8C9sBxpeZhLc7UeJI4", "xgb_delay.pkl")
     }
 
-    # ==============================
     # CANCELLATION MODELS
-    # ==============================
     cancel_links = {
         "Random Forest": ("1AJxhnPsOL5VRtXqB8TO52RFAAzKQa_dI", "rf_cancel.pkl"),
         "Decision Tree": ("1VGat3BhFmQwkjrQKDUDPWW12_FHndjVv", "dt_cancel.pkl"),
@@ -54,12 +49,17 @@ def load_model(mode, model_name):
     links = delay_links if mode == "Delay" else cancel_links
 
     file_id, filename = links[model_name]
-
-    # 🔥 FORCE NEW DOWNLOAD
     download(file_id, filename)
 
     try:
-        return joblib.load(filename)
+        model = joblib.load(filename)
+
+        # 🔥 FIX XGBOOST ERROR
+        if hasattr(model, "use_label_encoder"):
+            model.use_label_encoder = False
+
+        return model
+
     except Exception as e:
         st.error(f"❌ Model loading failed: {e}")
         return None
@@ -90,28 +90,24 @@ cancel_accuracy = {
 # MODE + MODEL
 # ==============================
 mode = st.selectbox("Select Prediction Type", ["Delay", "Cancellation"])
-
 model_list = ["Random Forest","Decision Tree","Logistic Regression","KNN","SVM","XGBoost"]
 model_choice = st.selectbox("Select Model", model_list)
 
-# Show accuracy
-if mode == "Delay":
-    acc = delay_accuracy.get(model_choice, "N/A")
-else:
-    acc = cancel_accuracy.get(model_choice, "N/A")
+# Accuracy display
+acc = delay_accuracy.get(model_choice) if mode == "Delay" else cancel_accuracy.get(model_choice)
 
 st.success(f"✅ Using Model: {model_choice} ({mode})")
 st.info(f"📊 Model Accuracy: {acc}%")
 
 # Reload button
 if st.button("🔄 Reload Models"):
-    st.success("Reloading models...")
+    st.success("Models will reload automatically")
 
 # Load model
 model = load_model(mode, model_choice)
 
 # ==============================
-# SINGLE INPUT
+# SINGLE PREDICTION
 # ==============================
 st.header("🧍 Single Prediction")
 
@@ -131,71 +127,55 @@ with col2:
 
 weekend = st.selectbox("Weekend", [0, 1])
 
-# ==============================
-# SINGLE PREDICTION
-# ==============================
 if st.button("Predict"):
+    if model is not None:
+        data = np.array([[airline, origin, dest, dep_delay,
+                          distance, crs_dep_time, month,
+                          day_of_week, weekend]])
 
-    if model is None:
-        st.error("❌ Model not loaded")
+        pred = model.predict(data)[0]
+
+        if mode == "Delay":
+            st.success("⚠ Flight Delayed" if pred == 1 else "✅ Flight On Time")
+        else:
+            st.success("⚠ Flight Cancelled" if pred == 1 else "✅ Not Cancelled")
     else:
-        try:
-            data = np.array([[airline, origin, dest, dep_delay,
-                              distance, crs_dep_time, month,
-                              day_of_week, weekend]])
-
-            pred = model.predict(data)[0]
-
-            if mode == "Delay":
-                st.success("⚠ Flight Delayed" if pred == 1 else "✅ Flight On Time")
-            else:
-                st.success("⚠ Flight Cancelled" if pred == 1 else "✅ Not Cancelled")
-
-        except Exception as e:
-            st.error(f"Prediction Error: {e}")
+        st.error("Model not loaded")
 
 # ==============================
 # BATCH PREDICTION
 # ==============================
 st.header("📂 Batch Prediction")
 
-uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
+file = st.file_uploader("Upload CSV", type=["csv"])
 
-if uploaded_file is not None:
+if file:
+    df = pd.read_csv(file)
+    st.dataframe(df.head())
 
-    try:
-        df = pd.read_csv(uploaded_file)
-        st.dataframe(df.head())
+    if st.button("Run Batch Prediction"):
 
-        if st.button("Predict Batch"):
+        df.columns = [c.strip().lower() for c in df.columns]
 
-            df.columns = [col.strip().lower() for col in df.columns]
-            df = df.rename(columns={"weekend": "is_weekend"})
+        if "is_weekend" not in df.columns:
+            df["is_weekend"] = df["day_of_week"].apply(lambda x: 1 if x in [5,6] else 0)
 
-            if "is_weekend" not in df.columns:
-                df["is_weekend"] = df["day_of_week"].apply(
-                    lambda x: 1 if x in [5, 6] else 0
-                )
+        features = [
+            "airline","origin","dest","dep_delay",
+            "distance","crs_dep_time","month",
+            "day_of_week","is_weekend"
+        ]
 
-            required = [
-                "airline","origin","dest","dep_delay",
-                "distance","crs_dep_time","month",
-                "day_of_week","is_weekend"
-            ]
+        df_model = df[features]
 
-            df_model = df[required]
+        preds = model.predict(df_model)
 
-            preds = model.predict(df_model)
+        if mode == "Delay":
+            df["Result"] = ["Delayed" if x==1 else "On Time" for x in preds]
+        else:
+            df["Result"] = ["Cancelled" if x==1 else "Not Cancelled" for x in preds]
 
-            if mode == "Delay":
-                df["RESULT"] = ["Delayed" if x==1 else "On Time" for x in preds]
-            else:
-                df["RESULT"] = ["Cancelled" if x==1 else "Not Cancelled" for x in preds]
+        st.success("Batch Prediction Done")
+        st.dataframe(df)
 
-            st.success("✅ Done")
-            st.dataframe(df)
-
-            st.download_button("Download CSV", df.to_csv(index=False), "result.csv")
-
-    except Exception as e:
-        st.error(f"CSV Error: {e}")
+        st.download_button("Download CSV", df.to_csv(index=False), "output.csv")
