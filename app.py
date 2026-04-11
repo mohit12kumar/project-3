@@ -15,94 +15,89 @@ st.set_page_config(page_title="Flight Prediction System", layout="centered")
 st.title("✈ Flight Delay & Cancellation Prediction")
 
 # ==============================
-# RELOAD BUTTON (IMPORTANT)
-# ==============================
-if st.button("🔄 Reload Models"):
-    st.cache_resource.clear()
-    st.success("✅ Cache cleared. Reload app.")
-
-# ==============================
-# MODEL LOADER (FINAL FIXED)
+# MODEL LOADER
 # ==============================
 @st.cache_resource
 def load_model(mode, model_name):
 
     def download(file_id, output):
-        # 🔥 DELETE OLD FILE
-        if os.path.exists(output):
-            os.remove(output)
+        if not os.path.exists(output):
+            url = f"https://drive.google.com/uc?id={file_id}"
+            gdown.download(url, output, quiet=True)
 
-        url = f"https://drive.google.com/uc?id={file_id}"
-        gdown.download(url, output, quiet=False)
-
-    # ==============================
     # DELAY MODELS
-    # ==============================
     delay_links = {
-        "Random Forest": ("1kcjKFn-59lK1S8QHv1rHzcm4sL2VLTSU", "random_forest_model.pkl"),
-        "Decision Tree": ("1PZdtmAnt15nj1PC1rB8aW0kZIssgU8IM", "decision_tree_model.pkl"),
-        "Logistic Regression": ("1cL9xaBH6WU_UlXAMpFlU8zenIpY7jgNf", "LogisticRegression.pkl"),
-        "KNN": ("1hAMdiSjssNoXRGmzcLcnm8RsivyKStA2", "KNeighborsClassifier.pkl"),
-        "SVM": ("1pw_1yVInCY_N5prysDQT7_i78v2LblBU", "LinearSVC.pkl"),
-        "XGBoost": ("1B6gZvXZCizgN9j8C9sBxpeZhLc7UeJI4", "XGBClassifier.pkl")  # 🔥 UPDATE HERE
+        "Random Forest": ("1kcjKFn-59lK1S8QHv1rHzcm4sL2VLTSU", "rf_delay.pkl"),
+        "Decision Tree": ("1PZdtmAnt15nj1PC1rB8aW0kZIssgU8IM", "dt_delay.pkl"),
+        "Logistic Regression": ("1cL9xaBH6WU_UlXAMpFlU8zenIpY7jgNf", "lr_delay.pkl"),
+        "KNN": ("1hAMdiSjssNoXRGmzcLcnm8RsivyKStA2", "knn_delay.pkl"),
+        "SVM": ("1pw_1yVInCY_N5prysDQT7_i78v2LblBU", "svm_delay.pkl"),
+        "XGBoost": ("1B6gZvXZCizgN9j8C9sBxpeZhLc7UeJI4", "xgb_delay.pkl")
     }
 
-    # ==============================
     # CANCELLATION MODELS
-    # ==============================
     cancel_links = {
         "Random Forest": ("1AJxhnPsOL5VRtXqB8TO52RFAAzKQa_dI", "rf_cancel.pkl"),
         "Decision Tree": ("1VGat3BhFmQwkjrQKDUDPWW12_FHndjVv", "dt_cancel.pkl"),
         "Logistic Regression": ("16k7XQcInCTNuveWDSPiTLbhfgRPH2bUi", "lr_cancel.pkl"),
         "KNN": ("1qnC3xUyeJ8SDi455THh2_IbSmc4BVQgi", "knn_cancel.pkl"),
         "SVM": ("1ppy1emNTbhbi0YP0CxWu-cAJXXhNorNV", "svm_cancel.pkl"),
-        "XGBoost": ("1SJa04KaD6Gjx8TwOjT_2C2_Q5br3gXAW", "XGBClassifier.pkl")  # 🔥 UPDATE HERE
+        "XGBoost": ("1SJa04KaD6Gjx8TwOjT_2C2_Q5br3gXAW", "xgb_cancel.pkl")
     }
 
     links = delay_links if mode == "Delay" else cancel_links
 
-    try:
-        file_id, filename = links[model_name]
-    except:
-        st.error("❌ Model not found")
-        return None
+    file_id, filename = links[model_name]
 
-    # Download fresh model
     download(file_id, filename)
 
-    # Load safely
     try:
-        model = joblib.load(filename)
-        return model
+        return joblib.load(filename)
     except Exception as e:
         st.error(f"❌ Model loading failed: {e}")
         return None
 
 
 # ==============================
+# MODEL ACCURACY DATA
+# ==============================
+delay_accuracy = {
+    "Random Forest": 91.90,
+    "SVM": 91.89,
+    "Decision Tree": 91.28,
+    "Logistic Regression": 91.05,
+    "KNN": 92.71,
+    "XGBoost": 89.45
+}
+
+cancel_accuracy = {
+    "Random Forest": 96.73,
+    "XGBoost": 95.21,
+    "Decision Tree": 97.11,
+    "KNN": 97.13,
+    "SVM": 43.80,
+    "Logistic Regression": 43.10
+}
+
+# ==============================
 # MODE + MODEL SELECTION
 # ==============================
 mode = st.selectbox("Select Prediction Type", ["Delay", "Cancellation"])
 
-model_list = [
-    "Random Forest",
-    "Decision Tree",
-    "Logistic Regression",
-    "KNN",
-    "SVM",
-    "XGBoost"
-]
-
+model_list = ["Random Forest","Decision Tree","Logistic Regression","KNN","SVM","XGBoost"]
 model_choice = st.selectbox("Select Model", model_list)
 
+# Show accuracy
+if mode == "Delay":
+    acc = delay_accuracy.get(model_choice, "N/A")
+else:
+    acc = cancel_accuracy.get(model_choice, "N/A")
+
 st.success(f"✅ Using Model: {model_choice} ({mode})")
-st.info("📥 Model will download only once (cached)")
+st.info(f"📊 Model Accuracy: {acc}%")
 
+# Load model
 model = load_model(mode, model_choice)
-
-# Debug (optional)
-if model is not None:
-    st.write("Model type:", type(model))
 
 # ==============================
 # INPUT UI
@@ -131,7 +126,7 @@ weekend = st.selectbox("Weekend", [0, 1])
 if st.button("Predict"):
 
     if model is None:
-        st.error("❌ Model not loaded properly")
+        st.error("❌ Model not loaded")
     else:
         try:
             data = np.array([[airline, origin, dest, dep_delay,
@@ -149,7 +144,7 @@ if st.button("Predict"):
             st.error(f"Prediction Error: {e}")
 
 # ==============================
-# BATCH PREDICTION (FIXED)
+# BATCH PREDICTION
 # ==============================
 st.header("📂 Batch Prediction")
 
@@ -159,18 +154,15 @@ if uploaded_file is not None:
 
     try:
         df = pd.read_csv(uploaded_file)
-
         st.write("Preview:")
         st.dataframe(df.head())
 
         if st.button("Predict Batch"):
 
-            # 🔥 FIX COLUMN NAMES
+            # FIX column names
             df.columns = [col.strip().lower() for col in df.columns]
 
-            df = df.rename(columns={
-                "weekend": "is_weekend"
-            })
+            df = df.rename(columns={"weekend": "is_weekend"})
 
             required = [
                 "airline", "origin", "dest", "dep_delay",
@@ -178,7 +170,6 @@ if uploaded_file is not None:
                 "day_of_week", "is_weekend"
             ]
 
-            # Auto-create weekend if missing
             if "is_weekend" not in df.columns:
                 df["is_weekend"] = df["day_of_week"].apply(
                     lambda x: 1 if x in [5, 6] else 0
@@ -201,3 +192,13 @@ if uploaded_file is not None:
 
     except Exception as e:
         st.error(f"CSV Error: {e}")
+
+# ==============================
+# SHOW MODEL COMPARISON
+# ==============================
+st.header("📊 Model Comparison")
+
+if mode == "Delay":
+    st.dataframe(pd.DataFrame(delay_accuracy.items(), columns=["Model", "Accuracy"]))
+else:
+    st.dataframe(pd.DataFrame(cancel_accuracy.items(), columns=["Model", "Accuracy"]))
