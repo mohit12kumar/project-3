@@ -44,7 +44,7 @@ def load_model(mode, model_name):
         "Logistic Regression": ("1cL9xaBH6WU_UlXAMpFlU8zenIpY7jgNf", "LogisticRegression.pkl"),
         "KNN": ("1hAMdiSjssNoXRGmzcLcnm8RsivyKStA2", "KNeighborsClassifier.pkl"),
         "SVM": ("1pw_1yVInCY_N5prysDQT7_i78v2LblBU", "LinearSVC.pkl"),
-        "XGBoost": ("YOUR_NEW_FILE_ID", "XGBClassifier.pkl")  # 🔥 UPDATE HERE
+        "XGBoost": ("1B6gZvXZCizgN9j8C9sBxpeZhLc7UeJI4", "XGBClassifier.pkl")  # 🔥 UPDATE HERE
     }
 
     # ==============================
@@ -56,7 +56,7 @@ def load_model(mode, model_name):
         "Logistic Regression": ("16k7XQcInCTNuveWDSPiTLbhfgRPH2bUi", "lr_cancel.pkl"),
         "KNN": ("1qnC3xUyeJ8SDi455THh2_IbSmc4BVQgi", "knn_cancel.pkl"),
         "SVM": ("1ppy1emNTbhbi0YP0CxWu-cAJXXhNorNV", "svm_cancel.pkl"),
-        "XGBoost": ("YOUR_NEW_FILE_ID", "XGBClassifier.pkl")  # 🔥 UPDATE HERE
+        "XGBoost": ("1SJa04KaD6Gjx8TwOjT_2C2_Q5br3gXAW", "XGBClassifier.pkl")  # 🔥 UPDATE HERE
     }
 
     links = delay_links if mode == "Delay" else cancel_links
