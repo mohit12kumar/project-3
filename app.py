@@ -69,9 +69,62 @@ cancel_models = {
     "XGBoost": safe_load("xgb_cancel.pkl")
 }
 
-# Remove failed models
 delay_models = {k: v for k, v in delay_models.items() if v is not None}
 cancel_models = {k: v for k, v in cancel_models.items() if v is not None}
+
+# ==============================
+# METRICS (DELAY)
+# ==============================
+delay_accuracy = {
+    "Deep Learning": 93.51, "Random Forest": 91.90, "SVM": 91.89,
+    "Decision Tree": 91.29, "Logistic Regression": 91.05,
+    "KNN": 92.71, "XGBoost": 89.45
+}
+
+delay_precision = {
+    "Deep Learning": 84.89, "Random Forest": 74.22, "SVM": 74.31,
+    "Decision Tree": 71.53, "Logistic Regression": 70.65,
+    "KNN": 89.95, "XGBoost": 64.85
+}
+
+delay_recall = {
+    "Deep Learning": 75.87, "Random Forest": 81.25, "SVM": 80.95,
+    "Decision Tree": 82.13, "Logistic Regression": 82.26,
+    "KNN": 65.01, "XGBoost": 84.69
+}
+
+delay_f1 = {
+    "Deep Learning": 80.13, "Random Forest": 77.58, "SVM": 77.49,
+    "Decision Tree": 76.47, "Logistic Regression": 76.02,
+    "KNN": 75.47, "XGBoost": 73.46
+}
+
+# ==============================
+# METRICS (CANCELLATION)
+# ==============================
+cancel_accuracy = {
+    "Random Forest": 96.73, "XGBoost": 95.21, "Deep Learning": 96.98,
+    "Decision Tree": 97.11, "KNN": 97.13, "SVM": 43.80,
+    "Logistic Regression": 43.10
+}
+
+cancel_precision = {
+    "Random Forest": 42.95, "XGBoost": 35.18, "Deep Learning": 44.22,
+    "Decision Tree": 45.75, "KNN": 36.04, "SVM": 3.13,
+    "Logistic Regression": 3.10
+}
+
+cancel_recall = {
+    "Random Forest": 74.43, "XGBoost": 98.09, "Deep Learning": 56.75,
+    "Decision Tree": 53.58, "KNN": 12.09, "SVM": 68.21,
+    "Logistic Regression": 68.59
+}
+
+cancel_f1 = {
+    "Random Forest": 54.47, "XGBoost": 51.79, "Deep Learning": 49.71,
+    "Decision Tree": 49.36, "KNN": 18.10, "SVM": 5.98,
+    "Logistic Regression": 5.95
+}
 
 # ==============================
 # MODE SELECTION
@@ -79,9 +132,13 @@ cancel_models = {k: v for k, v in cancel_models.items() if v is not None}
 mode = st.selectbox("Select Prediction Type", ["Delay", "Cancellation"])
 
 models_dict = delay_models if mode == "Delay" else cancel_models
+accuracy_dict = delay_accuracy if mode == "Delay" else cancel_accuracy
+precision_dict = delay_precision if mode == "Delay" else cancel_precision
+recall_dict = delay_recall if mode == "Delay" else cancel_recall
+f1_dict = delay_f1 if mode == "Delay" else cancel_f1
 
 # ==============================
-# INPUT
+# INPUT UI
 # ==============================
 st.header("🧍 Single Prediction")
 
@@ -98,7 +155,16 @@ weekend = st.selectbox("Weekend", [0, 1])
 model_choice = st.selectbox("Select Model", list(models_dict.keys()))
 
 # ==============================
-# SINGLE PREDICTION
+# SHOW METRICS
+# ==============================
+if model_choice in accuracy_dict:
+    st.success(f"📊 Accuracy: {accuracy_dict[model_choice]}%")
+    st.info(f"🎯 Precision: {precision_dict[model_choice]}%")
+    st.warning(f"🔁 Recall: {recall_dict[model_choice]}%")
+    st.write(f"📌 F1 Score: {f1_dict[model_choice]}%")
+
+# ==============================
+# PREDICTION
 # ==============================
 if st.button("Predict"):
     data = np.array([[airline, origin, dest, dep_delay,
@@ -109,11 +175,9 @@ if st.button("Predict"):
     pred = model.predict(data)[0]
 
     if mode == "Delay":
-        result = "⚠ Delayed" if pred == 1 else "✅ On Time"
+        st.success("⚠ Delayed" if pred == 1 else "✅ On Time")
     else:
-        result = "⚠ Cancelled" if pred == 1 else "✅ Not Cancelled"
-
-    st.success(result)
+        st.success("⚠ Cancelled" if pred == 1 else "✅ Not Cancelled")
 
 # ==============================
 # BATCH PREDICTION
@@ -153,3 +217,18 @@ if uploaded_file is not None:
 
         csv = df.to_csv(index=False).encode()
         st.download_button("Download", csv, "results.csv")
+
+# ==============================
+# PERFORMANCE TABLE
+# ==============================
+st.subheader(f"📊 {mode} Model Performance")
+
+df_metrics = pd.DataFrame({
+    "Model": list(accuracy_dict.keys()),
+    "Accuracy": list(accuracy_dict.values()),
+    "Precision": list(precision_dict.values()),
+    "Recall": list(recall_dict.values()),
+    "F1 Score": list(f1_dict.values())
+})
+
+st.dataframe(df_metrics)
