@@ -15,6 +15,24 @@ st.set_page_config(page_title="Flight Prediction System", layout="centered")
 st.title("✈ Flight Delay & Cancellation Prediction")
 
 # ==============================
+# 🔥 SMART ALIGN FUNCTION
+# ==============================
+def align_features(model, df):
+    try:
+        expected = model.feature_names_in_
+    except:
+        return df
+
+    df.columns = [c.lower() for c in df.columns]
+    expected_lower = [c.lower() for c in expected]
+
+    df = df[expected_lower]
+    df.columns = expected
+
+    return df
+
+
+# ==============================
 # MODEL LOADER
 # ==============================
 def load_model(mode, model_name):
@@ -22,6 +40,7 @@ def load_model(mode, model_name):
     def download(file_id, output):
         if os.path.exists(output):
             os.remove(output)
+
         url = f"https://drive.google.com/uc?id={file_id}"
         gdown.download(url, output, quiet=True)
 
@@ -50,6 +69,7 @@ def load_model(mode, model_name):
 
     model = joblib.load(filename)
 
+    # Fix XGBoost issue
     if hasattr(model, "use_label_encoder"):
         model.use_label_encoder = False
 
@@ -57,7 +77,7 @@ def load_model(mode, model_name):
 
 
 # ==============================
-# ACCURACY
+# ACCURACY DATA
 # ==============================
 delay_accuracy = {
     "Random Forest": 91.90,
@@ -78,9 +98,10 @@ cancel_accuracy = {
 }
 
 # ==============================
-# MODE
+# MODE + MODEL
 # ==============================
 mode = st.selectbox("Select Prediction Type", ["Delay", "Cancellation"])
+
 model_choice = st.selectbox("Select Model",
     ["Random Forest","Decision Tree","Logistic Regression","KNN","SVM","XGBoost"])
 
@@ -94,7 +115,7 @@ model = load_model(mode, model_choice)
 # ==============================
 # SINGLE PREDICTION
 # ==============================
-st.header("Single Prediction")
+st.header("🧍 Single Prediction")
 
 airline = st.number_input("Airline")
 origin = st.number_input("Origin")
@@ -108,17 +129,19 @@ weekend = st.selectbox("Weekend",[0,1])
 
 if st.button("Predict"):
 
-    data = pd.DataFrame([[
+    df = pd.DataFrame([[
         airline, origin, dest, dep_delay,
         distance, crs_dep_time, month,
         day_of_week, weekend
     ]], columns=[
-        "AIRLINE","ORIGIN","DEST","DEP_DELAY",
-        "DISTANCE","CRS_DEP_TIME","MONTH",
-        "DAY_OF_WEEK","IS_WEEKEND"
+        "airline","origin","dest","dep_delay",
+        "distance","crs_dep_time","month",
+        "day_of_week","is_weekend"
     ])
 
-    pred = model.predict(data)[0]
+    df = align_features(model, df)
+
+    pred = model.predict(df)[0]
 
     if mode=="Delay":
         st.success("Delayed" if pred==1 else "On Time")
@@ -127,9 +150,9 @@ if st.button("Predict"):
 
 
 # ==============================
-# 🔥 SMART BATCH PREDICTION
+# SMART BATCH PREDICTION
 # ==============================
-st.header("Smart CSV Prediction")
+st.header("📂 Smart CSV Prediction")
 
 file = st.file_uploader("Upload CSV", type=["csv"])
 
@@ -139,10 +162,8 @@ if file:
 
     if st.button("Run Prediction"):
 
-        # STEP 1: lowercase normalize
         df.columns = [c.strip().lower() for c in df.columns]
 
-        # STEP 2: mapping
         mapping = {
             "airline": ["airline","carrier"],
             "origin": ["origin","source"],
@@ -167,18 +188,13 @@ if file:
 
         df_new = pd.DataFrame(new_df)
 
-        # create weekend
         if df_new["is_weekend"].eq(0).all():
             df_new["is_weekend"] = df_new["day_of_week"].apply(
                 lambda x: 1 if x in [5,6] else 0
             )
 
-        # STEP 3: convert to UPPERCASE (MODEL FORMAT)
-        df_new.columns = [
-            "AIRLINE","ORIGIN","DEST","DEP_DELAY",
-            "DISTANCE","CRS_DEP_TIME","MONTH",
-            "DAY_OF_WEEK","IS_WEEKEND"
-        ]
+        # 🔥 FINAL ALIGNMENT
+        df_new = align_features(model, df_new)
 
         preds = model.predict(df_new)
 
@@ -187,5 +203,7 @@ if file:
         else:
             df["Result"] = ["Cancelled" if x==1 else "Not Cancelled" for x in preds]
 
-        st.success("Done")
+        st.success("Prediction Complete")
         st.dataframe(df)
+
+        st.download_button("Download CSV", df.to_csv(index=False), "output.csv")
