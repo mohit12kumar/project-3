@@ -61,9 +61,8 @@ def safe_predict(model, data):
         return np.zeros(len(data))
 
 # ==============================
-# MODEL LOADER (FIXED)
+# MODEL LOADER (ONE MODEL ONLY)
 # ==============================
-@st.cache_resource(show_spinner=True)
 def load_model(mode, model_name):
 
     delay_links = {
@@ -87,20 +86,32 @@ def load_model(mode, model_name):
     links = delay_links if mode == "Delay" else cancel_links
     file_id, filename = links[model_name]
 
-    try:
+    current_key = f"{mode}_{model_name}"
+
+    # ==============================
+    # REMOVE OLD MODEL FROM MEMORY
+    # ==============================
+    if "loaded_model_key" in st.session_state:
+        if st.session_state["loaded_model_key"] != current_key:
+            st.session_state.pop("model", None)
+            st.session_state.pop("loaded_model_key", None)
+
+    # ==============================
+    # LOAD NEW MODEL
+    # ==============================
+    if "model" not in st.session_state:
+
         if not os.path.exists(filename):
             url = f"https://drive.google.com/uc?id={file_id}"
-            st.warning(f"⬇ Downloading {model_name} (first time only)...")
+            st.warning(f"⬇ Downloading {model_name} (first time)...")
             gdown.download(url, filename, quiet=False)
         else:
-            st.success(f"⚡ Using cached model: {model_name}")
+            st.success(f"⚡ Using cached file: {filename}")
 
-        model = joblib.load(filename)
-        return model
+        st.session_state["model"] = joblib.load(filename)
+        st.session_state["loaded_model_key"] = current_key
 
-    except Exception as e:
-        st.error(f"❌ Model Load Error: {e}")
-        return None
+    return st.session_state["model"]
 
 # ==============================
 # ACCURACY DISPLAY
@@ -130,11 +141,8 @@ mode = st.selectbox("Select Prediction Type", ["Delay", "Cancellation"])
 
 model_choice = st.selectbox(
     "Select Model",
-    ["XGBoost", "Decision Tree", "Logistic Regression"]   # 🔥 optimized list
+    ["Random Forest","Decision Tree","Logistic Regression","KNN","SVM","XGBoost"]
 )
-
-# Save selection (prevents reload issues)
-st.session_state["model_key"] = f"{mode}_{model_choice}"
 
 acc = delay_accuracy.get(model_choice) if mode=="Delay" else cancel_accuracy.get(model_choice)
 
@@ -189,7 +197,7 @@ if st.button("🚀 Predict Now"):
     else:
         st.error("⚠ Flight is Cancelled") if pred==1 else st.success("✅ Flight is Not Cancelled")
 
-    # Confidence score
+    # Confidence
     try:
         if "XGB" in str(type(model)):
             prob = model.predict_proba(df.values)[0][1]
