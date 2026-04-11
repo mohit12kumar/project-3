@@ -15,7 +15,7 @@ st.set_page_config(page_title="Flight Prediction System", layout="centered")
 st.title("✈ Flight Delay & Cancellation Prediction")
 
 # ==============================
-# 🔥 SMART ALIGN FUNCTION
+# 🔥 ALIGN FEATURES (AUTO FIX)
 # ==============================
 def align_features(model, df):
     try:
@@ -31,6 +31,19 @@ def align_features(model, df):
 
     return df
 
+# ==============================
+# 🔥 SAFE PREDICT (XG FIX)
+# ==============================
+def safe_predict(model, data):
+
+    if "XGB" in str(type(model)):
+        try:
+            import xgboost as xgb
+            return model.predict(xgb.DMatrix(data))
+        except:
+            return model.predict(data)
+    else:
+        return model.predict(data)
 
 # ==============================
 # MODEL LOADER
@@ -40,7 +53,6 @@ def load_model(mode, model_name):
     def download(file_id, output):
         if os.path.exists(output):
             os.remove(output)
-
         url = f"https://drive.google.com/uc?id={file_id}"
         gdown.download(url, output, quiet=True)
 
@@ -69,15 +81,20 @@ def load_model(mode, model_name):
 
     model = joblib.load(filename)
 
-    # Fix XGBoost issue
-    if hasattr(model, "use_label_encoder"):
-        model.use_label_encoder = False
+    # 🔥 FIX XGBOOST ERROR
+    if "XGB" in str(type(model)):
+        try:
+            model.get_booster()
+        except:
+            pass
+
+        if not hasattr(model, "use_label_encoder"):
+            model.use_label_encoder = False
 
     return model
 
-
 # ==============================
-# ACCURACY DATA
+# ACCURACY
 # ==============================
 delay_accuracy = {
     "Random Forest": 91.90,
@@ -98,10 +115,9 @@ cancel_accuracy = {
 }
 
 # ==============================
-# MODE + MODEL
+# MODE
 # ==============================
 mode = st.selectbox("Select Prediction Type", ["Delay", "Cancellation"])
-
 model_choice = st.selectbox("Select Model",
     ["Random Forest","Decision Tree","Logistic Regression","KNN","SVM","XGBoost"])
 
@@ -141,16 +157,15 @@ if st.button("Predict"):
 
     df = align_features(model, df)
 
-    pred = model.predict(df)[0]
+    pred = safe_predict(model, df)[0]
 
     if mode=="Delay":
-        st.success("Delayed" if pred==1 else "On Time")
+        st.success("⚠ Delayed" if pred==1 else "✅ On Time")
     else:
-        st.success("Cancelled" if pred==1 else "Not Cancelled")
-
+        st.success("⚠ Cancelled" if pred==1 else "✅ Not Cancelled")
 
 # ==============================
-# SMART BATCH PREDICTION
+# SMART BATCH
 # ==============================
 st.header("📂 Smart CSV Prediction")
 
@@ -193,10 +208,9 @@ if file:
                 lambda x: 1 if x in [5,6] else 0
             )
 
-        # 🔥 FINAL ALIGNMENT
         df_new = align_features(model, df_new)
 
-        preds = model.predict(df_new)
+        preds = safe_predict(model, df_new)
 
         if mode=="Delay":
             df["Result"] = ["Delayed" if x==1 else "On Time" for x in preds]
