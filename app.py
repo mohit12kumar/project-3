@@ -15,7 +15,7 @@ st.set_page_config(page_title="Flight Prediction System", layout="centered")
 st.title("✈ Flight Delay & Cancellation Prediction")
 
 # ==============================
-# MODEL LOADER (SMART LOAD)
+# MODEL LOADER (UPDATED SAFE)
 # ==============================
 @st.cache_resource
 def load_model(mode, model_name):
@@ -47,11 +47,23 @@ def load_model(mode, model_name):
 
     links = delay_links if mode == "Delay" else cancel_links
 
-    file_id, filename = links[model_name]
+    # Safe model selection
+    try:
+        file_id, filename = links[model_name]
+    except:
+        st.error("❌ Model not found")
+        return None
 
+    # Download model
     download(file_id, filename)
 
-    return joblib.load(filename)
+    # Load model safely
+    try:
+        return joblib.load(filename)
+    except Exception as e:
+        st.error(f"❌ Model loading failed: {e}")
+        return None
+
 
 # ==============================
 # MODE + MODEL SELECTION
@@ -69,8 +81,10 @@ model_list = [
 
 model_choice = st.selectbox("Select Model", model_list)
 
-st.info("📥 Model loads only when selected (first time may take few seconds)")
+st.success(f"✅ Using Model: {model_choice} ({mode})")
+st.info("📥 Model loads only once and will be cached for faster use")
 
+# Load model
 model = load_model(mode, model_choice)
 
 # ==============================
@@ -95,24 +109,27 @@ with col2:
 weekend = st.selectbox("Weekend", [0, 1])
 
 # ==============================
-# PREDICT SINGLE
+# SINGLE PREDICTION
 # ==============================
 if st.button("Predict"):
 
-    try:
-        data = np.array([[airline, origin, dest, dep_delay,
-                          distance, crs_dep_time, month,
-                          day_of_week, weekend]])
+    if model is None:
+        st.error("❌ Model not loaded properly")
+    else:
+        try:
+            data = np.array([[airline, origin, dest, dep_delay,
+                              distance, crs_dep_time, month,
+                              day_of_week, weekend]])
 
-        pred = model.predict(data)[0]
+            pred = model.predict(data)[0]
 
-        if mode == "Delay":
-            st.success("⚠ Flight Delayed" if pred == 1 else "✅ Flight On Time")
-        else:
-            st.success("⚠ Flight Cancelled" if pred == 1 else "✅ Not Cancelled")
+            if mode == "Delay":
+                st.success("⚠ Flight Delayed" if pred == 1 else "✅ Flight On Time")
+            else:
+                st.success("⚠ Flight Cancelled" if pred == 1 else "✅ Not Cancelled")
 
-    except Exception as e:
-        st.error(f"Error: {e}")
+        except Exception as e:
+            st.error(f"Prediction Error: {e}")
 
 # ==============================
 # BATCH PREDICTION
