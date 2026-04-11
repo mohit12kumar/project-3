@@ -1,5 +1,5 @@
 # ==============================
-# STREAMLIT CONFIG (MUST BE FIRST)
+# STREAMLIT CONFIG
 # ==============================
 import streamlit as st
 st.set_page_config(page_title="Flight Delay Prediction", layout="centered")
@@ -15,16 +15,13 @@ import gdown
 st.title("✈ Flight Delay Prediction System")
 
 # ==============================
-# GOOGLE DRIVE DOWNLOAD FUNCTION
+# DOWNLOAD MODELS
 # ==============================
 def download_model(file_id, output):
     if not os.path.exists(output):
         url = f"https://drive.google.com/uc?id={file_id}"
         gdown.download(url, output, quiet=False)
 
-# ==============================
-# DOWNLOAD MODELS
-# ==============================
 download_model("1kcjKFn-59lK1S8QHv1rHzcm4sL2VLTSU", "random_forest_model.pkl")
 download_model("1PZdtmAnt15nj1PC1rB8aW0kZIssgU8IM", "decision_tree_model.pkl")
 download_model("1cL9xaBH6WU_UlXAMpFlU8zenIpY7jgNf", "LogisticRegression.pkl")
@@ -32,20 +29,39 @@ download_model("1hAMdiSjssNoXRGmzcLcnm8RsivyKStA2", "KNeighborsClassifier.pkl")
 download_model("1pw_1yVInCY_N5prysDQT7_i78v2LblBU", "LinearSVC.pkl")
 download_model("1B6gZvXZCizgN9j8C9sBxpeZhLc7UeJI4", "XGBClassifier.pkl")
 
-st.write("📥 Downloading models... please wait")
+st.write("📥 Loading models...")
 
 # ==============================
-# LOAD MODELS
+# SAFE MODEL LOADING (IMPORTANT)
 # ==============================
-try:
-    rf_model = joblib.load("random_forest_model.pkl")
-    dt_model = joblib.load("decision_tree_model.pkl")
-    lr_model = joblib.load("LogisticRegression.pkl")
-    knn_model = joblib.load("KNeighborsClassifier.pkl")
-    svm_model = joblib.load("LinearSVC.pkl")
-    xgb_model = joblib.load("XGBClassifier.pkl")
-except Exception as e:
-    st.error(f"Error loading models: {e}")
+def load_model_safe(path, name):
+    try:
+        return joblib.load(path)
+    except Exception as e:
+        st.warning(f"⚠ {name} not loaded (skipped)")
+        return None
+
+rf_model = load_model_safe("random_forest_model.pkl", "Random Forest")
+dt_model = load_model_safe("decision_tree_model.pkl", "Decision Tree")
+lr_model = load_model_safe("LogisticRegression.pkl", "Logistic Regression")
+knn_model = load_model_safe("KNeighborsClassifier.pkl", "KNN")
+svm_model = load_model_safe("LinearSVC.pkl", "SVM")
+xgb_model = load_model_safe("XGBClassifier.pkl", "XGBoost")
+
+# ==============================
+# MODEL LIST (ONLY WORKING ONES)
+# ==============================
+models_dict = {
+    "Random Forest": rf_model,
+    "Decision Tree": dt_model,
+    "Logistic Regression": lr_model,
+    "KNN": knn_model,
+    "SVM": svm_model,
+    "XGBoost": xgb_model
+}
+
+# Remove None models
+models_dict = {k: v for k, v in models_dict.items() if v is not None}
 
 # ==============================
 # MODEL ACCURACY
@@ -60,7 +76,7 @@ model_accuracy = {
 }
 
 # ==============================
-# INPUT FIELDS
+# INPUT UI
 # ==============================
 st.header("Enter Flight Details")
 
@@ -77,32 +93,18 @@ is_weekend = st.selectbox("Weekend", [0, 1])
 # ==============================
 # MODEL SELECTION
 # ==============================
-model_choice = st.selectbox("Select Model", list(model_accuracy.keys()))
+if len(models_dict) == 0:
+    st.error("❌ No models loaded properly")
+else:
+    model_choice = st.selectbox("Select Model", list(models_dict.keys()))
 
-def get_model(name):
-    return {
-        "Random Forest": rf_model,
-        "Decision Tree": dt_model,
-        "Logistic Regression": lr_model,
-        "KNN": knn_model,
-        "SVM": svm_model,
-        "XGBoost": xgb_model
-    }.get(name, None)
+    if st.button("Predict Delay"):
+        try:
+            data = np.array([[airline, origin, dest, dep_delay,
+                              distance, crs_dep_time, month,
+                              day_of_week, is_weekend]])
 
-# ==============================
-# PREDICT
-# ==============================
-if st.button("Predict Delay"):
-    try:
-        data = np.array([[airline, origin, dest, dep_delay,
-                          distance, crs_dep_time, month,
-                          day_of_week, is_weekend]])
-
-        model = get_model(model_choice)
-
-        if model is None:
-            st.error("❌ Model not loaded")
-        else:
+            model = models_dict[model_choice]
             pred = model.predict(data)[0]
 
             if pred == 1:
@@ -110,11 +112,11 @@ if st.button("Predict Delay"):
             else:
                 st.success("✅ Flight On Time")
 
-    except Exception as e:
-        st.error(f"Error: {e}")
+        except Exception as e:
+            st.error(f"Error: {e}")
 
 # ==============================
-# MODEL PERFORMANCE
+# PERFORMANCE
 # ==============================
 st.header("📊 Model Performance")
 
