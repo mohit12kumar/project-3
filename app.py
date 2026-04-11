@@ -59,6 +59,23 @@ def load_models():
 models_dict = load_models()
 
 # ==============================
+# MODEL ACCURACY
+# ==============================
+model_accuracy = {
+    "Decision Tree": 93.46,
+    "Random Forest": 91.90,
+    "SVM": 91.89,
+    "Logistic Regression": 91.05,
+    "KNN": 92.71,
+    "XGBoost": 89.45
+}
+
+st.header("📊 Model Accuracy")
+
+for model, acc in model_accuracy.items():
+    st.write(f"{model} : {acc}%")
+
+# ==============================
 # INPUT UI (SINGLE ENTRY)
 # ==============================
 st.header("🧍 Single Prediction")
@@ -86,6 +103,10 @@ if len(models_dict) == 0:
     st.error("❌ No models loaded")
 else:
     model_choice = st.selectbox("Select Model", list(models_dict.keys()))
+
+    # Show selected model accuracy
+    if model_choice in model_accuracy:
+        st.success(f"📊 Accuracy: {model_accuracy[model_choice]}%")
 
     # ==============================
     # SINGLE PREDICTION
@@ -121,8 +142,15 @@ if uploaded_file is not None:
         st.write("📄 Preview:")
         st.dataframe(df.head())
 
+        # Model selection for batch
+        batch_model_choice = st.selectbox(
+            "Select Model for Batch Prediction",
+            list(models_dict.keys()),
+            key="batch_model"
+        )
+
         if st.button("Predict for All Rows"):
-            model = models_dict[model_choice]
+            model = models_dict[batch_model_choice]
 
             predictions = model.predict(df)
 
@@ -134,7 +162,6 @@ if uploaded_file is not None:
             st.success("✅ Batch Prediction Done")
             st.dataframe(df)
 
-            # Download result
             csv = df.to_csv(index=False).encode('utf-8')
             st.download_button(
                 "📥 Download Results",
