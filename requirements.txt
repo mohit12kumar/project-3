@@ -4,3 +4,4 @@ xgboost==1.7.6
 numpy==2.4.4
 pandas==3.0.2
 joblib==1.5.3
+gdown==5.2.1
