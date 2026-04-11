@@ -21,7 +21,7 @@ def load_model(mode, model_name):
 
     def download(file_id, output):
         if os.path.exists(output):
-            os.remove(output)  # 🔥 remove old file
+            os.remove(output)
 
         url = f"https://drive.google.com/uc?id={file_id}"
         gdown.download(url, output, quiet=True)
@@ -54,7 +54,7 @@ def load_model(mode, model_name):
     try:
         model = joblib.load(filename)
 
-        # 🔥 FIX XGBOOST ERROR
+        # Fix old XGBoost issue
         if hasattr(model, "use_label_encoder"):
             model.use_label_encoder = False
 
@@ -90,6 +90,7 @@ cancel_accuracy = {
 # MODE + MODEL
 # ==============================
 mode = st.selectbox("Select Prediction Type", ["Delay", "Cancellation"])
+
 model_list = ["Random Forest","Decision Tree","Logistic Regression","KNN","SVM","XGBoost"]
 model_choice = st.selectbox("Select Model", model_list)
 
@@ -98,7 +99,6 @@ acc = delay_accuracy.get(model_choice) if mode == "Delay" else cancel_accuracy.g
 st.success(f"✅ Using Model: {model_choice} ({mode})")
 st.info(f"📊 Model Accuracy: {acc}%")
 
-# Load model
 model = load_model(mode, model_choice)
 
 # ==============================
@@ -123,16 +123,16 @@ with col2:
 weekend = st.selectbox("Weekend", [0, 1])
 
 if st.button("Predict"):
-
     if model is not None:
+
         data = pd.DataFrame([[
             airline, origin, dest, dep_delay,
             distance, crs_dep_time, month,
             day_of_week, weekend
         ]], columns=[
-            "AIRLINE","ORIGIN","DEST","DEP_DELAY",
-            "DISTANCE","CRS_DEP_TIME","MONTH",
-            "DAY_OF_WEEK","IS_WEEKEND"
+            "airline","origin","dest","dep_delay",
+            "distance","crs_dep_time","month",
+            "day_of_week","is_weekend"
         ])
 
         pred = model.predict(data)[0]
@@ -147,7 +147,7 @@ if st.button("Predict"):
 
 
 # ==============================
-# BATCH PREDICTION (FIXED)
+# BATCH PREDICTION
 # ==============================
 st.header("📂 Batch Prediction")
 
@@ -159,18 +159,22 @@ if file:
 
     if st.button("Run Batch Prediction"):
 
-        # 🔥 FIX COLUMN NAMES
-        df.columns = [col.strip().upper() for col in df.columns]
+        # 🔥 FIX COLUMN CASE (LOWERCASE)
+        df.columns = [col.strip().lower() for col in df.columns]
 
-        if "IS_WEEKEND" not in df.columns:
-            df["IS_WEEKEND"] = df["DAY_OF_WEEK"].apply(
+        # Fix naming
+        df = df.rename(columns={"weekend": "is_weekend"})
+
+        # Create missing column
+        if "is_weekend" not in df.columns:
+            df["is_weekend"] = df["day_of_week"].apply(
                 lambda x: 1 if x in [5, 6] else 0
             )
 
         features = [
-            "AIRLINE","ORIGIN","DEST","DEP_DELAY",
-            "DISTANCE","CRS_DEP_TIME","MONTH",
-            "DAY_OF_WEEK","IS_WEEKEND"
+            "airline","origin","dest","dep_delay",
+            "distance","crs_dep_time","month",
+            "day_of_week","is_weekend"
         ]
 
         df_model = df[features]
@@ -178,9 +182,9 @@ if file:
         preds = model.predict(df_model)
 
         if mode == "Delay":
-            df["RESULT"] = ["Delayed" if x==1 else "On Time" for x in preds]
+            df["Result"] = ["Delayed" if x==1 else "On Time" for x in preds]
         else:
-            df["RESULT"] = ["Cancelled" if x==1 else "Not Cancelled" for x in preds]
+            df["Result"] = ["Cancelled" if x==1 else "Not Cancelled" for x in preds]
 
         st.success("✅ Batch Prediction Done")
         st.dataframe(df)
