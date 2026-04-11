@@ -116,52 +116,37 @@ if st.button("Predict Delay"):
 # ==============================
 # BATCH PREDICTION
 # ==============================
-st.header("📂 Batch Prediction (CSV Upload)")
-
-uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
-
 if uploaded_file is not None:
     try:
         df = pd.read_csv(uploaded_file)
+
         st.write("📄 Preview:")
         st.dataframe(df.head())
 
         if st.button("Predict for All Rows"):
 
-            # Normalize column names
+            # Convert all columns to uppercase (match training)
             df.columns = [col.upper() for col in df.columns]
 
-            # Mapping
-            column_mapping = {
-                "AIRLINE": "Airline",
-                "ORIGIN": "Origin",
-                "DEST": "Destination",
-                "DEP_DELAY": "Departure Delay",
-                "DISTANCE": "Distance",
-                "CRS_DEP_TIME": "CRS Dep Time",
-                "MONTH": "Month",
-                "DAY_OF_WEEK": "Day of Week",
-                "WEEKEND": "Weekend"
-            }
-
-            df = df.rename(columns=column_mapping)
-
-            # Create Weekend if missing
-            if "Weekend" not in df.columns:
-                if "Day of Week" in df.columns:
-                    df["Weekend"] = df["Day of Week"].apply(
-                        lambda x: 1 if x in [5, 6] else 0
-                    )
-                    st.info("ℹ️ Weekend column auto-created")
-                else:
-                    st.error("❌ 'Day of Week' column required")
-                    st.stop()
-
+            # Required columns EXACTLY as training
             required_columns = [
-                "Airline", "Origin", "Destination", "Departure Delay",
-                "Distance", "CRS Dep Time", "Month", "Day of Week", "Weekend"
+                "AIRLINE", "ORIGIN", "DEST", "DEP_DELAY",
+                "DISTANCE", "CRS_DEP_TIME", "MONTH",
+                "DAY_OF_WEEK", "WEEKEND"
             ]
 
+            # Create WEEKEND if missing
+            if "WEEKEND" not in df.columns:
+                if "DAY_OF_WEEK" in df.columns:
+                    df["WEEKEND"] = df["DAY_OF_WEEK"].apply(
+                        lambda x: 1 if x in [5, 6] else 0
+                    )
+                    st.info("ℹ️ WEEKEND column auto-created")
+                else:
+                    st.error("❌ DAY_OF_WEEK column required")
+                    st.stop()
+
+            # Check missing
             missing = [col for col in required_columns if col not in df.columns]
 
             if missing:
@@ -172,7 +157,7 @@ if uploaded_file is not None:
                 model = models_dict[model_choice]
                 predictions = model.predict(df)
 
-                df["Result"] = ["Delayed" if x == 1 else "On Time" for x in predictions]
+                df["RESULT"] = ["Delayed" if x == 1 else "On Time" for x in predictions]
 
                 st.success("✅ Batch Prediction Completed")
                 st.dataframe(df)
@@ -182,7 +167,6 @@ if uploaded_file is not None:
 
     except Exception as e:
         st.error(f"CSV Error: {e}")
-
 # ==============================
 # MODEL COMPARISON
 # ==============================
