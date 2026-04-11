@@ -1,5 +1,5 @@
 # ==============================
-# IMPORTS (MUST BE FIRST)
+# IMPORTS
 # ==============================
 import streamlit as st
 import numpy as np
@@ -9,14 +9,13 @@ import gdown
 import pandas as pd
 
 # ==============================
-# STREAMLIT CONFIG
+# CONFIG
 # ==============================
 st.set_page_config(page_title="Flight Delay Prediction", layout="centered")
-
 st.title("✈ Flight Delay Prediction System")
 
 # ==============================
-# DOWNLOAD MODELS (ONLY ONCE)
+# DOWNLOAD MODELS
 # ==============================
 @st.cache_resource
 def download_models():
@@ -35,7 +34,7 @@ def download_models():
 download_models()
 
 # ==============================
-# LOAD MODELS SAFELY
+# LOAD MODELS
 # ==============================
 @st.cache_resource
 def load_models():
@@ -59,7 +58,30 @@ def load_models():
 models_dict = load_models()
 
 # ==============================
-# INPUT UI (SINGLE ENTRY)
+# MODEL ACCURACY
+# ==============================
+model_accuracy = {
+    "Decision Tree": 93.46,
+    "Random Forest": 91.90,
+    "SVM": 91.89,
+    "Logistic Regression": 91.05,
+    "KNN": 92.71,
+    "XGBoost": 89.45
+}
+
+# ==============================
+# MODEL SELECTION
+# ==============================
+if len(models_dict) == 0:
+    st.error("❌ No models loaded")
+else:
+    model_choice = st.selectbox("Select Model", list(models_dict.keys()))
+
+    if model_choice in model_accuracy:
+        st.success(f"📊 Accuracy: {model_accuracy[model_choice]}%")
+
+# ==============================
+# SINGLE PREDICTION
 # ==============================
 st.header("🧍 Single Prediction")
 
@@ -79,69 +101,65 @@ with col2:
 
 is_weekend = st.selectbox("Weekend", [0, 1])
 
-# ==============================
-# MODEL SELECTION
-# ==============================
-if len(models_dict) == 0:
-    st.error("❌ No models loaded")
-else:
-    model_choice = st.selectbox("Select Model", list(models_dict.keys()))
+if st.button("Predict Delay"):
+    try:
+        data = np.array([[airline, origin, dest, dep_delay,
+                          distance, crs_dep_time, month,
+                          day_of_week, is_weekend]])
 
-    # ==============================
-    # SINGLE PREDICTION
-    # ==============================
-    if st.button("Predict Delay"):
-        try:
-            data = np.array([[airline, origin, dest, dep_delay,
-                              distance, crs_dep_time, month,
-                              day_of_week, is_weekend]])
+        model = models_dict[model_choice]
+        pred = model.predict(data)[0]
 
-            model = models_dict[model_choice]
-            pred = model.predict(data)[0]
+        if pred == 1:
+            st.error("⚠ Flight Delayed")
+        else:
+            st.success("✅ Flight On Time")
 
-            if pred == 1:
-                st.error("⚠ Flight Delayed")
-            else:
-                st.success("✅ Flight On Time")
-
-        except Exception as e:
-            st.error(f"Prediction Error: {e}")
+    except Exception as e:
+        st.error(f"Error: {e}")
 
 # ==============================
-# BATCH PREDICTION (CSV)
+# BATCH PREDICTION
 # ==============================
-st.header("📂 Batch Prediction (Upload CSV)")
+st.header("📂 Batch Prediction (CSV Upload)")
 
-uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
+uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
 
 if uploaded_file is not None:
     try:
         df = pd.read_csv(uploaded_file)
-
-        st.write("📄 Preview:")
         st.dataframe(df.head())
 
         if st.button("Predict for All Rows"):
-            model = models_dict[model_choice]
 
+            required_columns = [
+                "Airline", "Origin", "Destination", "Departure Delay",
+                "Distance", "CRS Dep Time", "Month", "Day of Week", "Weekend"
+            ]
+
+            df = df[required_columns]
+
+            model = models_dict[model_choice]
             predictions = model.predict(df)
 
-            df["Prediction"] = predictions
-            df["Result"] = df["Prediction"].apply(
-                lambda x: "Delayed" if x == 1 else "On Time"
-            )
+            df["Result"] = ["Delayed" if x == 1 else "On Time" for x in predictions]
 
-            st.success("✅ Batch Prediction Done")
+            st.success("✅ Batch Prediction Completed")
             st.dataframe(df)
 
-            # Download result
             csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                "📥 Download Results",
-                csv,
-                "prediction_results.csv",
-                "text/csv"
-            )
+            st.download_button("📥 Download Results", csv, "results.csv", "text/csv")
 
     except Exception as e:
         st.error(f"CSV Error: {e}")
+
+# ==============================
+# MODEL COMPARISON
+# ==============================
+st.header("📊 Model Comparison")
+
+acc_df = pd.DataFrame(list(model_accuracy.items()), columns=["Model", "Accuracy"])
+st.dataframe(acc_df)
+
+best_model = max(model_accuracy, key=model_accuracy.get)
+st.info(f"🏆 Best Model: {best_model} ({model_accuracy[best_model]}%)")
