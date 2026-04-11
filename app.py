@@ -7,6 +7,9 @@ import joblib
 import os
 import gdown
 import pandas as pd
+import warnings
+
+warnings.filterwarnings("ignore")
 
 # ==============================
 # CONFIG
@@ -14,49 +17,40 @@ import pandas as pd
 st.set_page_config(page_title="Flight Prediction System", layout="centered")
 st.title("✈ Flight Delay & Cancellation Prediction")
 
-st.write("🚀 App Loaded Successfully")
-
 # ==============================
-# ALIGN FEATURES
+# ALIGN FEATURES (FIXED)
 # ==============================
 def align_features(model, df):
     try:
-        expected = model.feature_names_in_
-        df.columns = [c.lower() for c in df.columns]
-        expected_lower = [c.lower() for c in expected]
-        df = df[expected_lower]
-        df.columns = expected
+        if hasattr(model, "feature_names_in_"):
+            expected = model.feature_names_in_
+            df = df[expected]   # strict match
     except:
         pass
     return df
 
 # ==============================
-# SAFE PREDICT (NO CRASH)
+# SAFE PREDICT (FIXED)
 # ==============================
 def safe_predict(model, data):
-    import numpy as np
 
     if model is None:
         return np.zeros(len(data))
 
     try:
-        # XGBoost Safe Mode
-        if "XGB" in str(type(model)):
-            import xgboost as xgb
-            booster = model.get_booster()
-            dmatrix = xgb.DMatrix(data)
-            preds = booster.predict(dmatrix)
-            return (preds > 0.5).astype(int)
-        else:
-            return model.predict(data)
+        # ALWAYS use numpy → avoids feature mismatch
+        data = data.values
+
+        return model.predict(data)
 
     except Exception as e:
-        st.warning("⚠ Model not compatible in this environment")
+        st.error(f"Prediction Error: {e}")
         return np.zeros(len(data))
 
 # ==============================
-# MODEL LOADER (SAFE)
+# MODEL LOADER (CACHED)
 # ==============================
+@st.cache_resource
 def load_model(mode, model_name):
 
     delay_links = {
@@ -77,12 +71,12 @@ def load_model(mode, model_name):
         "XGBoost": ("1SJa04KaD6Gjx8TwOjT_2C2_Q5br3gXAW", "xgb_cancel.pkl")
     }
 
-    try:
-        def download(file_id, output):
-            if not os.path.exists(output):
-                url = f"https://drive.google.com/uc?id={file_id}"
-                gdown.download(url, output, quiet=True)
+    def download(file_id, output):
+        if not os.path.exists(output):
+            url = f"https://drive.google.com/uc?id={file_id}"
+            gdown.download(url, output, quiet=True)
 
+    try:
         links = delay_links if mode == "Delay" else cancel_links
         file_id, filename = links[model_name]
 
@@ -92,7 +86,6 @@ def load_model(mode, model_name):
         return model
 
     except:
-        st.warning(f"⚠ {model_name} failed to load")
         return None
 
 # ==============================
@@ -132,7 +125,7 @@ st.info(f"Accuracy: {acc}%")
 model = load_model(mode, model_choice)
 
 if model is None:
-    st.error("❌ Model not available, try another")
+    st.error("❌ Model not available")
 
 # ==============================
 # SINGLE PREDICTION
@@ -151,15 +144,12 @@ weekend = st.selectbox("Weekend",[0,1])
 
 if st.button("Predict"):
 
-    df = pd.DataFrame([[
-        airline, origin, dest, dep_delay,
-        distance, crs_dep_time, month,
-        day_of_week, weekend
-    ]], columns=[
-        "airline","origin","dest","dep_delay",
-        "distance","crs_dep_time","month",
-        "day_of_week","is_weekend"
-    ])
+    df = pd.DataFrame([[airline, origin, dest, dep_delay,
+                        distance, crs_dep_time, month,
+                        day_of_week, weekend]],
+                      columns=["airline","origin","dest","dep_delay",
+                               "distance","crs_dep_time","month",
+                               "day_of_week","is_weekend"])
 
     df = align_features(model, df)
 
@@ -171,9 +161,9 @@ if st.button("Predict"):
         st.success("⚠ Cancelled" if pred==1 else "✅ Not Cancelled")
 
 # ==============================
-# SMART CSV PREDICTION
+# CSV PREDICTION
 # ==============================
-st.header("📂 Smart CSV Prediction")
+st.header("📂 CSV Prediction")
 
 file = st.file_uploader("Upload CSV", type=["csv"])
 
@@ -185,43 +175,22 @@ if file:
 
         df.columns = [c.strip().lower() for c in df.columns]
 
-        mapping = {
-            "airline": ["airline","carrier"],
-            "origin": ["origin","source"],
-            "dest": ["dest","destination"],
-            "dep_delay": ["dep_delay","delay"],
-            "distance": ["distance"],
-            "crs_dep_time": ["crs_dep_time","time"],
-            "month": ["month"],
-            "day_of_week": ["day_of_week","day"],
-            "is_weekend": ["is_weekend","weekend"]
-        }
+        df_new = df.copy()
 
-        new_df = {}
-
-        for key, aliases in mapping.items():
-            for col in df.columns:
-                if col in aliases:
-                    new_df[key] = df[col]
-                    break
+        if "is_weekend" not in df_new.columns:
+            if "day_of_week" in df_new.columns:
+                df_new["is_weekend"] = df_new["day_of_week"].apply(
+                    lambda x: 1 if x in [5,6] else 0
+                )
             else:
-                new_df[key] = 0
-
-        df_new = pd.DataFrame(new_df)
-
-        if df_new["is_weekend"].eq(0).all():
-            df_new["is_weekend"] = df_new["day_of_week"].apply(
-                lambda x: 1 if x in [5,6] else 0
-            )
+                df_new["is_weekend"] = 0
 
         df_new = align_features(model, df_new)
 
         preds = safe_predict(model, df_new)
 
-        if mode=="Delay":
-            df["Result"] = ["Delayed" if x==1 else "On Time" for x in preds]
-        else:
-            df["Result"] = ["Cancelled" if x==1 else "Not Cancelled" for x in preds]
+        df["Result"] = ["Delayed" if x==1 else "On Time" for x in preds] if mode=="Delay" \
+                       else ["Cancelled" if x==1 else "Not Cancelled" for x in preds]
 
         st.success("Prediction Complete")
         st.dataframe(df)
