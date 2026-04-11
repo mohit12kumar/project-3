@@ -12,10 +12,14 @@ import warnings
 warnings.filterwarnings("ignore")
 
 # ==============================
-# CONFIG
+# CONFIG (UPDATED)
 # ==============================
-st.set_page_config(page_title="Flight Prediction System", layout="centered")
-st.title("✈ Flight Delay & Cancellation Prediction")
+st.set_page_config(page_title="Flight Prediction System", layout="wide")
+
+st.markdown(
+    "<h2 style='text-align: center; color: #2E86C1;'>✈ Flight Delay & Cancellation Prediction System</h2>",
+    unsafe_allow_html=True
+)
 
 # ==============================
 # ALIGN FEATURES
@@ -30,7 +34,7 @@ def align_features(model, df):
     return df
 
 # ==============================
-# SAFE PREDICT (FINAL FIX)
+# SAFE PREDICT
 # ==============================
 def safe_predict(model, data):
 
@@ -40,7 +44,6 @@ def safe_predict(model, data):
     try:
         data = data.values
 
-        # Special handling for XGBoost
         if "XGB" in str(type(model)):
             try:
                 probs = model.predict_proba(data)[:, 1]
@@ -142,21 +145,29 @@ if model is None:
     st.error("❌ Model not available")
 
 # ==============================
+# INPUT UI (UPDATED)
+# ==============================
+st.header("📊 Enter Flight Details")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    airline = st.number_input("Airline")
+    origin = st.number_input("Origin")
+    dest = st.number_input("Destination")
+    dep_delay = st.number_input("Departure Delay")
+
+with col2:
+    distance = st.number_input("Distance")
+    crs_dep_time = st.number_input("CRS Dep Time")
+    month = st.number_input("Month",1,12)
+    day_of_week = st.number_input("Day of Week",0,6)
+    weekend = st.selectbox("Weekend",[0,1])
+
+# ==============================
 # SINGLE PREDICTION
 # ==============================
-st.header("🧍 Single Prediction")
-
-airline = st.number_input("Airline")
-origin = st.number_input("Origin")
-dest = st.number_input("Destination")
-dep_delay = st.number_input("Departure Delay")
-distance = st.number_input("Distance")
-crs_dep_time = st.number_input("CRS Dep Time")
-month = st.number_input("Month",1,12)
-day_of_week = st.number_input("Day of Week",0,6)
-weekend = st.selectbox("Weekend",[0,1])
-
-if st.button("Predict"):
+if st.button("🚀 Predict Now"):
 
     df = pd.DataFrame([[airline, origin, dest, dep_delay,
                         distance, crs_dep_time, month,
@@ -169,15 +180,31 @@ if st.button("Predict"):
 
     pred = safe_predict(model, df)[0]
 
+    st.subheader("📢 Prediction Result")
+
     if mode=="Delay":
-        st.success("⚠ Delayed" if pred==1 else "✅ On Time")
+        if pred == 1:
+            st.error("⚠ Flight is Delayed")
+        else:
+            st.success("✅ Flight is On Time")
     else:
-        st.success("⚠ Cancelled" if pred==1 else "✅ Not Cancelled")
+        if pred == 1:
+            st.error("⚠ Flight is Cancelled")
+        else:
+            st.success("✅ Flight is Not Cancelled")
+
+    # Confidence score
+    try:
+        if "XGB" in str(type(model)):
+            prob = model.predict_proba(df.values)[0][1]
+            st.info(f"📊 Prediction Confidence: {prob:.2f}")
+    except:
+        pass
 
 # ==============================
 # CSV PREDICTION
 # ==============================
-st.header("📂 CSV Prediction")
+st.header("📂 Upload CSV for Batch Prediction")
 
 file = st.file_uploader("Upload CSV", type=["csv"])
 
