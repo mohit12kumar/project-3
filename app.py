@@ -27,24 +27,18 @@ st.markdown(
 def align_features(model, df):
     try:
         if hasattr(model, "feature_names_in_"):
-            expected = model.feature_names_in_
-            df = df[expected]
+            df = df[model.feature_names_in_]
     except:
         pass
     return df
 
 # ==============================
-# SAFE PREDICT (✅ FIXED)
+# SAFE PREDICT
 # ==============================
 def safe_predict(model, data):
-
-    if model is None:
-        return np.zeros(len(data))
-
     try:
         data = data.values
 
-        # ✅ XGBoost Fix
         if "XGB" in str(type(model)):
             try:
                 return model.predict(data)
@@ -54,7 +48,6 @@ def safe_predict(model, data):
                 preds = model.get_booster().predict(dmatrix)
                 return (preds > 0.4).astype(int)
 
-        # ✅ Other Models
         if hasattr(model, "predict_proba"):
             probs = model.predict_proba(data)[:, 1]
             return (probs > 0.4).astype(int)
@@ -66,7 +59,7 @@ def safe_predict(model, data):
         return np.zeros(len(data))
 
 # ==============================
-# MODEL LOADER
+# MODEL LOADER (ONE MODEL ONLY)
 # ==============================
 def load_model(mode, model_name):
 
@@ -96,7 +89,6 @@ def load_model(mode, model_name):
     if "loaded_model_key" in st.session_state:
         if st.session_state["loaded_model_key"] != current_key:
             st.session_state.pop("model", None)
-            st.session_state.pop("loaded_model_key", None)
 
     if "model" not in st.session_state:
 
@@ -113,25 +105,37 @@ def load_model(mode, model_name):
     return st.session_state["model"]
 
 # ==============================
-# ACCURACY
+# PREPROCESS INPUT
 # ==============================
-delay_accuracy = {
-    "Random Forest": 91.90,
-    "SVM": 91.89,
-    "Decision Tree": 91.28,
-    "Logistic Regression": 91.05,
-    "KNN": 92.71,
-    "XGBoost": 89.45
-}
+def preprocess_input(df):
 
-cancel_accuracy = {
-    "Random Forest": 96.73,
-    "XGBoost": 95.21,
-    "Decision Tree": 97.11,
-    "KNN": 97.13,
-    "SVM": 43.80,
-    "Logistic Regression": 43.10
-}
+    # Numeric
+    for col in ["dep_delay","distance","crs_dep_time"]:
+        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+
+    # Month
+    month_map = {
+        "january":1,"february":2,"march":3,"april":4,
+        "may":5,"june":6,"july":7,"august":8,
+        "september":9,"october":10,"november":11,"december":12
+    }
+    df["month"] = df["month"].astype(str).str.lower().map(month_map).fillna(1)
+
+    # Day
+    day_map = {
+        "monday":0,"tuesday":1,"wednesday":2,
+        "thursday":3,"friday":4,"saturday":5,"sunday":6
+    }
+    df["day_of_week"] = df["day_of_week"].astype(str).str.lower().map(day_map).fillna(0)
+
+    # Auto weekend
+    df["is_weekend"] = df["day_of_week"].apply(lambda x: 1 if x in [5,6] else 0)
+
+    # Encode categorical
+    for col in ["airline","origin","dest"]:
+        df[col] = df[col].astype(str).astype("category").cat.codes
+
+    return df
 
 # ==============================
 # UI
@@ -143,11 +147,6 @@ model_choice = st.selectbox(
     ["Random Forest","Decision Tree","Logistic Regression","KNN","SVM","XGBoost"]
 )
 
-acc = delay_accuracy.get(model_choice) if mode=="Delay" else cancel_accuracy.get(model_choice)
-
-st.success(f"{model_choice} ({mode})")
-st.info(f"Accuracy: {acc}%")
-
 model = load_model(mode, model_choice)
 
 # ==============================
@@ -158,59 +157,45 @@ st.header("📊 Enter Flight Details")
 col1, col2 = st.columns(2)
 
 with col1:
-    airline = st.number_input("Airline")
-    origin = st.number_input("Origin")
-    dest = st.number_input("Destination")
-    dep_delay = st.number_input("Departure Delay")
+    airline = st.text_input("Airline")
+    origin = st.text_input("Origin")
+    dest = st.text_input("Destination")
+    dep_delay = st.text_input("Departure Delay")
 
 with col2:
-    distance = st.number_input("Distance")
-    crs_dep_time = st.number_input("CRS Dep Time")
-    month = st.number_input("Month",1,12)
-    day_of_week = st.number_input("Day of Week",0,6)
-    weekend = st.selectbox("Weekend",[0,1])
+    distance = st.text_input("Distance")
+    crs_dep_time = st.text_input("Scheduled Departure Time")
+    month = st.text_input("Month (January, February...)")
+    day_of_week = st.text_input("Day (Monday, Sunday...)")
 
 # ==============================
-# SINGLE PREDICTION
+# PREDICTION
 # ==============================
 if st.button("🚀 Predict Now"):
 
     df = pd.DataFrame([[airline, origin, dest, dep_delay,
                         distance, crs_dep_time, month,
-                        day_of_week, weekend]],
+                        day_of_week]],
                       columns=["airline","origin","dest","dep_delay",
                                "distance","crs_dep_time","month",
-                               "day_of_week","is_weekend"])
+                               "day_of_week"])
 
+    df = preprocess_input(df)
     df = align_features(model, df)
+
     pred = safe_predict(model, df)[0]
 
-    st.markdown("---")
-    st.subheader("📢 Prediction Result")
+    st.subheader("📢 Result")
 
     if mode == "Delay":
-        if pred == 1:
-            st.error("⚠ Flight is Delayed")
-        else:
-            st.success("✅ Flight is On Time")
+        st.error("✈️ Flight will be DELAYED") if pred==1 else st.success("✈️ Flight ON TIME")
     else:
-        if pred == 1:
-            st.error("⚠ Flight is Cancelled")
-        else:
-            st.success("✅ Flight is Not Cancelled")
-
-    # Confidence (safe)
-    try:
-        if hasattr(model, "predict_proba"):
-            prob = model.predict_proba(df.values)[0][1]
-            st.info(f"📊 Confidence: {prob:.2f}")
-    except:
-        pass
+        st.error("✈️ Flight will be CANCELLED") if pred==1 else st.success("✈️ Flight NOT CANCELLED")
 
 # ==============================
-# CSV PREDICTION
+# CSV
 # ==============================
-st.header("📂 Upload CSV for Batch Prediction")
+st.header("📂 Upload CSV")
 
 file = st.file_uploader("Upload CSV", type=["csv"])
 
@@ -221,23 +206,25 @@ if file:
     if st.button("Run Prediction"):
 
         df.columns = [c.strip().lower() for c in df.columns]
-        df_new = df.copy()
 
-        if "is_weekend" not in df_new.columns:
-            if "day_of_week" in df_new.columns:
-                df_new["is_weekend"] = df_new["day_of_week"].apply(
-                    lambda x: 1 if x in [5,6] else 0
-                )
-            else:
-                df_new["is_weekend"] = 0
+        required = ["airline","origin","dest","dep_delay",
+                    "distance","crs_dep_time","month","day_of_week"]
 
+        for col in required:
+            if col not in df.columns:
+                df[col] = ""
+
+        df_new = df[required]
+
+        df_new = preprocess_input(df_new)
         df_new = align_features(model, df_new)
+
         preds = safe_predict(model, df_new)
 
         df["Result"] = ["Delayed" if x==1 else "On Time" for x in preds] if mode=="Delay" \
                        else ["Cancelled" if x==1 else "Not Cancelled" for x in preds]
 
-        st.success("Prediction Complete")
+        st.success("Done")
         st.dataframe(df)
 
         st.download_button("Download CSV", df.to_csv(index=False), "output.csv")
