@@ -1,8 +1,8 @@
-streamlit==1.56.0
-scikit-learn==1.6.1
-xgboost==1.7.6
-numpy==2.4.4
-pandas==3.0.2
-joblib==1.5.3
-gdown==5.2.1
-tensorflow
+streamlit
+numpy
+pandas
+scikit-learn
+joblib
+xgboost
+gdown
+tensorflow-cpu
