@@ -111,6 +111,53 @@ def preprocess_single_input(df):
     return df
 
 # ==============================
+# CSV PREPROCESS (FIXED)
+# ==============================
+def preprocess_input(df):
+
+    df.columns = [c.strip().lower() for c in df.columns]
+
+    mapping = {
+        "airline":"airline",
+        "origin":"origin",
+        "dest":"dest",
+        "dep_delay":"dep_delay",
+        "distance":"distance",
+        "crs_dep_time":"crs_dep_time",
+        "fl_date":"date"
+    }
+
+    df = df.rename(columns=mapping)
+
+    new_df = pd.DataFrame()
+
+    new_df["airline"] = df.get("airline","UNK")
+    new_df["origin"] = df.get("origin","UNK")
+    new_df["dest"] = df.get("dest","UNK")
+
+    new_df["dep_delay"] = pd.to_numeric(df.get("dep_delay",0), errors='coerce')
+    new_df["distance"] = pd.to_numeric(df.get("distance",0), errors='coerce')
+    new_df["crs_dep_time"] = pd.to_numeric(df.get("crs_dep_time",0), errors='coerce')
+
+    new_df = new_df.fillna(0)
+
+    # Date handling
+    if "date" in df.columns:
+        dt = pd.to_datetime(df["date"], errors='coerce')
+        new_df["month"] = dt.dt.month.fillna(1)
+        new_df["day_of_week"] = dt.dt.dayofweek.fillna(0)
+    else:
+        new_df["month"] = 1
+        new_df["day_of_week"] = 0
+
+    new_df["is_weekend"] = new_df["day_of_week"].apply(lambda x:1 if x in [5,6] else 0)
+
+    for col in ["airline","origin","dest"]:
+        new_df[col] = new_df[col].astype("category").cat.codes
+
+    return new_df
+
+# ==============================
 # UI
 # ==============================
 mode = st.selectbox("Prediction Type", ["Delay","Cancellation"])
@@ -127,7 +174,7 @@ if model_choice in ["Random Forest","KNN"]:
 model = load_model(mode, model_choice)
 
 # ==============================
-# SINGLE PREDICTION UI
+# SINGLE PREDICTION
 # ==============================
 st.header("📊 Single Prediction")
 
@@ -139,23 +186,15 @@ with col1:
     airline = st.text_input("Airline", placeholder="Example: AA")
     origin = st.text_input("Origin Airport", placeholder="Example: JFK")
     dest = st.text_input("Destination Airport", placeholder="Example: LAX")
-    dep_delay = st.text_input("Departure Delay (minutes)", placeholder="Example: 15")
+    dep_delay = st.text_input("Departure Delay", placeholder="Example: 15")
 
 with col2:
-    distance = st.text_input("Distance (miles)", placeholder="Example: 1200")
-    crs_dep_time = st.text_input("Departure Time (HHMM)", placeholder="Example: 1400")
+    distance = st.text_input("Distance", placeholder="Example: 1200")
+    crs_dep_time = st.text_input("Departure Time", placeholder="Example: 1400")
 
-    month = st.selectbox("Month",
-        ["January","February","March","April","May","June",
-         "July","August","September","October","November","December"])
+    month = st.selectbox("Month", ["January","February","March","April","May","June","July","August","September","October","November","December"])
+    day_of_week = st.selectbox("Day", ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"])
 
-    day_of_week = st.selectbox("Day",
-        ["Monday","Tuesday","Wednesday","Thursday",
-         "Friday","Saturday","Sunday"])
-
-# ==============================
-# PREDICT
-# ==============================
 if st.button("🚀 Predict"):
 
     df = pd.DataFrame([[airline,origin,dest,dep_delay,distance,crs_dep_time,month,day_of_week]],
@@ -166,13 +205,19 @@ if st.button("🚀 Predict"):
 
     pred = safe_predict(model, df)[0]
 
-    if mode=="Delay":
-        st.error("✈️ Flight DELAYED") if pred==1 else st.success("✈️ Flight ON TIME")
+    if mode == "Delay":
+        if pred == 1:
+            st.error("✈️ Flight DELAYED")
+        else:
+            st.success("✈️ Flight ON TIME")
     else:
-        st.error("✈️ Flight CANCELLED") if pred==1 else st.success("✈️ Flight NOT CANCELLED")
+        if pred == 1:
+            st.error("✈️ Flight CANCELLED")
+        else:
+            st.success("✈️ Flight NOT CANCELLED")
 
 # ==============================
-# CSV SECTION
+# CSV PREDICTION
 # ==============================
 st.header("📂 Upload Dataset")
 
@@ -187,7 +232,8 @@ if file:
     if st.button("🚀 Run Prediction"):
 
         try:
-            df_new = preprocess_single_input(df)
+            df_new = preprocess_input(df)
+
             df_new = align_features(model, df_new)
 
             preds = safe_predict(model, df_new)
