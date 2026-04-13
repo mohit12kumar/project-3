@@ -206,32 +206,71 @@ if st.button("🚀 Predict"):
 # ==============================
 # CSV PREDICTION
 # ==============================
+# ==============================
+# CSV PREDICTION (UPDATED)
+# ==============================
 st.header("📂 Upload Dataset")
 
 file = st.file_uploader("Upload CSV", type=["csv"])
 
 if file:
     df = pd.read_csv(file)
+
+    st.write("Original Data Preview")
     st.dataframe(df.head())
 
     if st.button("🚀 Run Prediction"):
 
-        df_new = preprocess_input(df)
+        try:
+            # ✅ ALWAYS KEEP ORIGINAL FL_NUMBER
+            if "FL_NUMBER" in df.columns:
+                flight_numbers = df["FL_NUMBER"].copy()
+            elif "fl_number" in df.columns:
+                flight_numbers = df["fl_number"].copy()
+            else:
+                flight_numbers = pd.Series(range(1, len(df)+1))
 
-        if model_type == "Machine Learning":
-            df_new = align_features(model, df_new)
-            preds = safe_predict(model, df_new)
-        else:
-            preds = (model.predict(df_new.values) > 0.5).astype(int).flatten()
+            # ✅ Preprocess (DON’T TOUCH ORIGINAL df)
+            df_new = preprocess_input(df)
+            
+            if model_type == "Machine Learning":
+                df_new = align_features(model, df_new)
+                preds = safe_predict(model, df_new)
+            else:
+                preds = (model.predict(df_new.values) > 0.5).astype(int).flatten()
 
-        flight_numbers = df["FL_NUMBER"] if "FL_NUMBER" in df.columns else range(len(df))
+            # ==============================
+            # OUTPUT
+            # ==============================
+            if mode == "Delay":
 
-        if mode == "Delay":
-            result = ["Delayed" if x==1 else "On Time" for x in preds]
-            output = pd.DataFrame({"FL_NUMBER":flight_numbers,"Delay":result})
-        else:
-            result = ["Cancelled" if x==1 else "Not Cancelled" for x in preds]
-            output = pd.DataFrame({"FL_NUMBER":flight_numbers,"Cancellation":result})
+                result = ["Delayed" if x==1 else "On Time" for x in preds]
 
-        st.dataframe(output)
-        st.download_button("Download", output.to_csv(index=False))
+                output_df = pd.DataFrame({
+                    "FL_NUMBER": flight_numbers.values,
+                    "Delay": result
+                })
+
+            else:
+
+                result = ["Cancelled" if x==1 else "Not Cancelled" for x in preds]
+
+                output_df = pd.DataFrame({
+                    "FL_NUMBER": flight_numbers.values,
+                    "Cancellation": result
+                })
+
+            st.success("✅ Prediction Complete")
+
+            # ✅ SHOW RESULT
+            st.dataframe(output_df)
+
+            # ✅ DOWNLOAD
+            st.download_button(
+                "📥 Download Result",
+                output_df.to_csv(index=False),
+                "final_output.csv"
+            )
+
+        except Exception as e:
+            st.error(f"❌ Error: {e}")
