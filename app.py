@@ -8,6 +8,7 @@ import os
 import gdown
 import pandas as pd
 import warnings
+from tensorflow.keras.models import load_model
 
 warnings.filterwarnings("ignore")
 
@@ -16,7 +17,7 @@ st.set_page_config(page_title="Flight Prediction System", layout="wide")
 st.markdown("<h2 style='text-align:center;'>✈ Flight Delay & Cancellation Prediction</h2>", unsafe_allow_html=True)
 
 # ==============================
-# MODEL LOADER
+# ML MODEL LOADER (UNCHANGED)
 # ==============================
 @st.cache_resource
 def load_model(mode, model_name):
@@ -60,7 +61,21 @@ def load_model(mode, model_name):
     return st.session_state["model"]
 
 # ==============================
-# SAFE PREDICT
+# DL MODEL LOADER (NEW)
+# ==============================
+@st.cache_resource
+def load_dl_model(mode):
+    if mode == "Delay":
+        return load_model_dl("deep_delay_model.keras")
+    else:
+        return load_model_dl("deep_cancel_model.keras")
+
+@st.cache_resource
+def load_model_dl(path):
+    return load_model(path)
+
+# ==============================
+# SAFE PREDICT (UNCHANGED)
 # ==============================
 def safe_predict(model, data):
     try:
@@ -72,7 +87,7 @@ def safe_predict(model, data):
         return np.zeros(len(data))
 
 # ==============================
-# ALIGN FEATURES
+# ALIGN FEATURES (UNCHANGED)
 # ==============================
 def align_features(model, df):
     try:
@@ -83,7 +98,7 @@ def align_features(model, df):
     return df
 
 # ==============================
-# SINGLE INPUT PREPROCESS
+# PREPROCESS SINGLE INPUT (UNCHANGED)
 # ==============================
 def preprocess_single_input(df):
 
@@ -111,17 +126,11 @@ def preprocess_single_input(df):
     return df
 
 # ==============================
-# CSV PREPROCESS
+# PREPROCESS CSV (UNCHANGED)
 # ==============================
 def preprocess_input(df):
 
     df.columns = [c.strip().lower() for c in df.columns]
-
-    df = df.rename(columns={
-        "fl_date":"date",
-        "dep_delay":"dep_delay",
-        "crs_dep_time":"crs_dep_time"
-    })
 
     new_df = pd.DataFrame()
 
@@ -135,8 +144,8 @@ def preprocess_input(df):
 
     new_df = new_df.fillna(0)
 
-    if "date" in df.columns:
-        dt = pd.to_datetime(df["date"], errors='coerce')
+    if "fl_date" in df.columns:
+        dt = pd.to_datetime(df["fl_date"], errors='coerce')
         new_df["month"] = dt.dt.month.fillna(1)
         new_df["day_of_week"] = dt.dt.dayofweek.fillna(0)
     else:
@@ -155,18 +164,21 @@ def preprocess_input(df):
 # ==============================
 mode = st.selectbox("Prediction Type", ["Delay","Cancellation"])
 
-model_choice = st.selectbox(
-    "Select Model",
-    ["XGBoost","Decision Tree","Logistic Regression","SVM","KNN","Random Forest"]
-)
+model_type = st.selectbox("Model Type", ["Machine Learning", "Deep Learning"])
 
-model = load_model(mode, model_choice)
+if model_type == "Machine Learning":
+    model_choice = st.selectbox(
+        "Select Model",
+        ["XGBoost","Decision Tree","Logistic Regression","SVM","KNN","Random Forest"]
+    )
+    model = load_model(mode, model_choice)
+else:
+    model = load_dl_model(mode)
 
 # ==============================
 # SINGLE PREDICTION
 # ==============================
 st.header("📊 Single Prediction")
-st.info("💡 Example: AA, JFK → LAX")
 
 airline = st.text_input("Airline", placeholder="AA")
 origin = st.text_input("Origin", placeholder="JFK")
@@ -184,29 +196,20 @@ if st.button("🚀 Predict"):
                       columns=["airline","origin","dest","dep_delay","distance","crs_dep_time","month","day_of_week"])
 
     df = preprocess_single_input(df)
-    df = align_features(model, df)
 
-    pred = safe_predict(model, df)[0]
+    if model_type == "Machine Learning":
+        df = align_features(model, df)
+        pred = safe_predict(model, df)[0]
+    else:
+        pred = (model.predict(df.values) > 0.5).astype(int)[0][0]
 
     if mode == "Delay":
-        if pred == 1:
-            st.error("✈️ Flight DELAYED")
-        else:
-            st.success("✈️ Flight ON TIME")
+        st.error("✈️ Flight DELAYED") if pred==1 else st.success("✈️ Flight ON TIME")
     else:
-        if pred == 1:
-            st.error("✈️ Flight CANCELLED")
-        else:
-            st.success("✈️ Flight NOT CANCELLED")
+        st.error("✈️ Flight CANCELLED") if pred==1 else st.success("✈️ Flight NOT CANCELLED")
 
 # ==============================
-# CSV
-# ==============================
-# ==============================
-# CSV PREDICTION (FINAL)
-# ==============================
-# ==============================
-# CSV PREDICTION (FINAL DYNAMIC)
+# CSV PREDICTION
 # ==============================
 st.header("📂 Upload Dataset")
 
@@ -214,58 +217,26 @@ file = st.file_uploader("Upload CSV", type=["csv"])
 
 if file:
     df = pd.read_csv(file)
-
-    st.write("Original Data Preview")
     st.dataframe(df.head())
 
     if st.button("🚀 Run Prediction"):
 
-        try:
-            # ✅ Save FL_NUMBER
-            if "FL_NUMBER" in df.columns:
-                flight_numbers = df["FL_NUMBER"].copy()
-            else:
-                flight_numbers = pd.Series(range(1, len(df)+1))
+        df_new = preprocess_input(df)
 
-            # ✅ Preprocess
-            df_new = preprocess_input(df)
+        if model_type == "Machine Learning":
             df_new = align_features(model, df_new)
-
-            # ✅ Predict
             preds = safe_predict(model, df_new)
+        else:
+            preds = (model.predict(df_new.values) > 0.5).astype(int).flatten()
 
-            # ==============================
-            # 🔥 DYNAMIC OUTPUT BASED ON MODE
-            # ==============================
-            if mode == "Delay":
+        flight_numbers = df["FL_NUMBER"] if "FL_NUMBER" in df.columns else range(len(df))
 
-                result = ["Delayed" if x==1 else "On Time" for x in preds]
+        if mode == "Delay":
+            result = ["Delayed" if x==1 else "On Time" for x in preds]
+            output = pd.DataFrame({"FL_NUMBER":flight_numbers,"Delay":result})
+        else:
+            result = ["Cancelled" if x==1 else "Not Cancelled" for x in preds]
+            output = pd.DataFrame({"FL_NUMBER":flight_numbers,"Cancellation":result})
 
-                output_df = pd.DataFrame({
-                    "FL_NUMBER": flight_numbers,
-                    "Delay": result
-                })
-
-            else:  # Cancellation
-
-                result = ["Cancelled" if x==1 else "Not Cancelled" for x in preds]
-
-                output_df = pd.DataFrame({
-                    "FL_NUMBER": flight_numbers,
-                    "Cancellation": result
-                })
-
-            st.success("✅ Prediction Complete")
-
-            # ✅ Show result
-            st.dataframe(output_df)
-
-            # ✅ Download
-            st.download_button(
-                "📥 Download Result",
-                output_df.to_csv(index=False),
-                "final_output.csv"
-            )
-
-        except Exception as e:
-            st.error(f"❌ Error: {e}")
+        st.dataframe(output)
+        st.download_button("Download", output.to_csv(index=False))
