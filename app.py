@@ -111,23 +111,17 @@ def preprocess_single_input(df):
     return df
 
 # ==============================
-# CSV PREPROCESS (FIXED)
+# CSV PREPROCESS
 # ==============================
 def preprocess_input(df):
 
     df.columns = [c.strip().lower() for c in df.columns]
 
-    mapping = {
-        "airline":"airline",
-        "origin":"origin",
-        "dest":"dest",
+    df = df.rename(columns={
+        "fl_date":"date",
         "dep_delay":"dep_delay",
-        "distance":"distance",
-        "crs_dep_time":"crs_dep_time",
-        "fl_date":"date"
-    }
-
-    df = df.rename(columns=mapping)
+        "crs_dep_time":"crs_dep_time"
+    })
 
     new_df = pd.DataFrame()
 
@@ -141,7 +135,6 @@ def preprocess_input(df):
 
     new_df = new_df.fillna(0)
 
-    # Date handling
     if "date" in df.columns:
         dt = pd.to_datetime(df["date"], errors='coerce')
         new_df["month"] = dt.dt.month.fillna(1)
@@ -164,12 +157,8 @@ mode = st.selectbox("Prediction Type", ["Delay","Cancellation"])
 
 model_choice = st.selectbox(
     "Select Model",
-    ["XGBoost","Decision Tree","Logistic Regression","SVM","KNN","Random Forest"],
-    index=0
+    ["XGBoost","Decision Tree","Logistic Regression","SVM","KNN","Random Forest"]
 )
-
-if model_choice in ["Random Forest","KNN"]:
-    st.warning("⚠️ Heavy model - may be slow")
 
 model = load_model(mode, model_choice)
 
@@ -177,23 +166,17 @@ model = load_model(mode, model_choice)
 # SINGLE PREDICTION
 # ==============================
 st.header("📊 Single Prediction")
+st.info("💡 Example: AA, JFK → LAX")
 
-st.info("💡 Example: Airline = AA, Origin = JFK, Destination = LAX")
+airline = st.text_input("Airline", placeholder="AA")
+origin = st.text_input("Origin", placeholder="JFK")
+dest = st.text_input("Destination", placeholder="LAX")
+dep_delay = st.text_input("Departure Delay", placeholder="15")
+distance = st.text_input("Distance", placeholder="1200")
+crs_dep_time = st.text_input("Time", placeholder="1400")
 
-col1,col2 = st.columns(2)
-
-with col1:
-    airline = st.text_input("Airline", placeholder="Example: AA")
-    origin = st.text_input("Origin Airport", placeholder="Example: JFK")
-    dest = st.text_input("Destination Airport", placeholder="Example: LAX")
-    dep_delay = st.text_input("Departure Delay", placeholder="Example: 15")
-
-with col2:
-    distance = st.text_input("Distance", placeholder="Example: 1200")
-    crs_dep_time = st.text_input("Departure Time", placeholder="Example: 1400")
-
-    month = st.selectbox("Month", ["January","February","March","April","May","June","July","August","September","October","November","December"])
-    day_of_week = st.selectbox("Day", ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"])
+month = st.selectbox("Month", ["January","February","March","April","May","June","July","August","September","October","November","December"])
+day_of_week = st.selectbox("Day", ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"])
 
 if st.button("🚀 Predict"):
 
@@ -217,7 +200,7 @@ if st.button("🚀 Predict"):
             st.success("✈️ Flight NOT CANCELLED")
 
 # ==============================
-# CSV PREDICTION
+# CSV
 # ==============================
 st.header("📂 Upload Dataset")
 
@@ -226,25 +209,30 @@ file = st.file_uploader("Upload CSV", type=["csv"])
 if file:
     df = pd.read_csv(file)
 
-    st.write("Detected Columns:", df.columns.tolist())
     st.dataframe(df.head())
 
     if st.button("🚀 Run Prediction"):
 
-        try:
-            df_new = preprocess_input(df)
+        df_new = preprocess_input(df)
+        df_new = align_features(model, df_new)
 
-            df_new = align_features(model, df_new)
+        preds = safe_predict(model, df_new)
 
-            preds = safe_predict(model, df_new)
+        result_col = ["Delayed" if x==1 else "On Time" for x in preds] if mode=="Delay" \
+                     else ["Cancelled" if x==1 else "Not Cancelled" for x in preds]
 
-            df["Result"] = ["Delayed" if x==1 else "On Time" for x in preds] if mode=="Delay" \
-                           else ["Cancelled" if x==1 else "Not Cancelled" for x in preds]
+        if "FL_NUMBER" in df.columns:
+            output_df = pd.DataFrame({
+                "Flight_Number": df["FL_NUMBER"],
+                "Result": result_col
+            })
+        else:
+            output_df = pd.DataFrame({
+                "Flight_Number": range(1, len(df)+1),
+                "Result": result_col
+            })
 
-            st.success("✅ Prediction Complete")
-            st.dataframe(df)
+        st.success("✅ Prediction Complete")
+        st.dataframe(output_df)
 
-            st.download_button("📥 Download Result", df.to_csv(index=False), "output.csv")
-
-        except Exception as e:
-            st.error(f"❌ Error: {e}")
+        st.download_button("📥 Download Result", output_df.to_csv(index=False), "prediction.csv")
