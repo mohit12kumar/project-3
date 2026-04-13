@@ -8,7 +8,7 @@ import os
 import gdown
 import pandas as pd
 import warnings
-from tensorflow.keras.models import load_model
+from tensorflow.keras.models import load_model as load_keras_model  # 🔥 FIXED
 
 warnings.filterwarnings("ignore")
 
@@ -61,18 +61,14 @@ def load_model(mode, model_name):
     return st.session_state["model"]
 
 # ==============================
-# DL MODEL LOADER (NEW)
+# DL MODEL LOADER (FIXED)
 # ==============================
 @st.cache_resource
 def load_dl_model(mode):
     if mode == "Delay":
-        return load_model_dl("deep_delay_model.keras")
+        return load_keras_model("deep_delay_model.keras")
     else:
-        return load_model_dl("deep_cancel_model.keras")
-
-@st.cache_resource
-def load_model_dl(path):
-    return load_model(path)
+        return load_keras_model("deep_cancel_model.keras")
 
 # ==============================
 # SAFE PREDICT (UNCHANGED)
@@ -98,7 +94,7 @@ def align_features(model, df):
     return df
 
 # ==============================
-# PREPROCESS SINGLE INPUT (UNCHANGED)
+# PREPROCESS SINGLE INPUT
 # ==============================
 def preprocess_single_input(df):
 
@@ -126,7 +122,7 @@ def preprocess_single_input(df):
     return df
 
 # ==============================
-# PREPROCESS CSV (UNCHANGED)
+# PREPROCESS CSV
 # ==============================
 def preprocess_input(df):
 
@@ -163,7 +159,6 @@ def preprocess_input(df):
 # UI
 # ==============================
 mode = st.selectbox("Prediction Type", ["Delay","Cancellation"])
-
 model_type = st.selectbox("Model Type", ["Machine Learning", "Deep Learning"])
 
 if model_type == "Machine Learning":
