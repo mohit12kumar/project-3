@@ -205,6 +205,9 @@ if st.button("🚀 Predict"):
 # ==============================
 # CSV PREDICTION (FINAL)
 # ==============================
+# ==============================
+# CSV PREDICTION (FINAL DYNAMIC)
+# ==============================
 st.header("📂 Upload Dataset")
 
 file = st.file_uploader("Upload CSV", type=["csv"])
@@ -212,49 +215,52 @@ file = st.file_uploader("Upload CSV", type=["csv"])
 if file:
     df = pd.read_csv(file)
 
+    st.write("Original Data Preview")
     st.dataframe(df.head())
 
     if st.button("🚀 Run Prediction"):
 
         try:
-            # Preprocess
-            df_new = preprocess_input(df)
-
-            # Load BOTH models
-            delay_model = load_model("Delay", model_choice)
-            cancel_model = load_model("Cancellation", model_choice)
-
-            df_delay = align_features(delay_model, df_new)
-            df_cancel = align_features(cancel_model, df_new)
-
-            # Predictions
-            delay_preds = safe_predict(delay_model, df_delay)
-            cancel_preds = safe_predict(cancel_model, df_cancel)
-
-            # Convert results
-            delay_result = ["Delayed" if x==1 else "On Time" for x in delay_preds]
-            cancel_result = ["Cancelled" if x==1 else "Not Cancelled" for x in cancel_preds]
-
-            # Final output
+            # ✅ Save FL_NUMBER
             if "FL_NUMBER" in df.columns:
-                output_df = pd.DataFrame({
-                    "FL_NUMBER": df["FL_NUMBER"],
-                    "Delay": delay_result,
-                    "Cancellation": cancel_result
-                })
+                flight_numbers = df["FL_NUMBER"].copy()
             else:
+                flight_numbers = pd.Series(range(1, len(df)+1))
+
+            # ✅ Preprocess
+            df_new = preprocess_input(df)
+            df_new = align_features(model, df_new)
+
+            # ✅ Predict
+            preds = safe_predict(model, df_new)
+
+            # ==============================
+            # 🔥 DYNAMIC OUTPUT BASED ON MODE
+            # ==============================
+            if mode == "Delay":
+
+                result = ["Delayed" if x==1 else "On Time" for x in preds]
+
                 output_df = pd.DataFrame({
-                    "FL_NUMBER": range(1, len(df)+1),
-                    "Delay": delay_result,
-                    "Cancellation": cancel_result
+                    "FL_NUMBER": flight_numbers,
+                    "Delay": result
+                })
+
+            else:  # Cancellation
+
+                result = ["Cancelled" if x==1 else "Not Cancelled" for x in preds]
+
+                output_df = pd.DataFrame({
+                    "FL_NUMBER": flight_numbers,
+                    "Cancellation": result
                 })
 
             st.success("✅ Prediction Complete")
 
-            # Show result
+            # ✅ Show result
             st.dataframe(output_df)
 
-            # Download
+            # ✅ Download
             st.download_button(
                 "📥 Download Result",
                 output_df.to_csv(index=False),
