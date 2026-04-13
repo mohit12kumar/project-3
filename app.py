@@ -16,7 +16,7 @@ st.set_page_config(page_title="Flight Prediction System", layout="wide")
 st.markdown("<h2 style='text-align:center;'>✈ Flight Delay & Cancellation Prediction</h2>", unsafe_allow_html=True)
 
 # ==============================
-# MODEL LOADER
+# MODEL LOADER (ONE MODEL ONLY)
 # ==============================
 @st.cache_resource
 def load_model(mode, model_name):
@@ -44,7 +44,6 @@ def load_model(mode, model_name):
 
     current_key = f"{mode}_{model_name}"
 
-    # Remove old model
     if "loaded_model_key" in st.session_state:
         if st.session_state["loaded_model_key"] != current_key:
             st.session_state.pop("model", None)
@@ -84,7 +83,35 @@ def align_features(model, df):
     return df
 
 # ==============================
-# PREPROCESS (FINAL FIX)
+# PREPROCESS (SINGLE INPUT)
+# ==============================
+def preprocess_single_input(df):
+
+    for col in ["dep_delay","distance","crs_dep_time"]:
+        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+
+    month_map = {
+        "january":1,"february":2,"march":3,"april":4,
+        "may":5,"june":6,"july":7,"august":8,
+        "september":9,"october":10,"november":11,"december":12
+    }
+    df["month"] = df["month"].astype(str).str.lower().map(month_map).fillna(1)
+
+    day_map = {
+        "monday":0,"tuesday":1,"wednesday":2,
+        "thursday":3,"friday":4,"saturday":5,"sunday":6
+    }
+    df["day_of_week"] = df["day_of_week"].astype(str).str.lower().map(day_map).fillna(0)
+
+    df["is_weekend"] = df["day_of_week"].apply(lambda x: 1 if x in [5,6] else 0)
+
+    for col in ["airline","origin","dest"]:
+        df[col] = df[col].astype("category").cat.codes
+
+    return df
+
+# ==============================
+# PREPROCESS (CSV DATASET)
 # ==============================
 def preprocess_input(df):
 
@@ -128,7 +155,6 @@ def preprocess_input(df):
 
     new_df = new_df.fillna(0)
 
-    # Date → month & day
     if required["date"]:
         dt = pd.to_datetime(df[required["date"]], errors='coerce')
         new_df["month"] = dt.dt.month.fillna(1)
@@ -137,7 +163,6 @@ def preprocess_input(df):
         new_df["month"] = 1
         new_df["day_of_week"] = 0
 
-    # Feature Engineering
     new_df["route"] = new_df["origin"].astype(str) + "_" + new_df["dest"].astype(str)
     new_df["delay_per_distance"] = new_df["dep_delay"]/(new_df["distance"]+1)
     new_df["is_weekend"] = new_df["day_of_week"].apply(lambda x:1 if x in [5,6] else 0)
@@ -146,7 +171,6 @@ def preprocess_input(df):
         lambda x: 0 if x<600 else (1 if x<1200 else (2 if x<1800 else 3))
     )
 
-    # Encoding
     for col in new_df.select_dtypes(include="object").columns:
         new_df[col] = new_df[col].astype("category").cat.codes
 
@@ -169,7 +193,42 @@ if model_choice in ["Random Forest","KNN"]:
 model = load_model(mode, model_choice)
 
 # ==============================
-# CSV SECTION
+# SINGLE PREDICTION
+# ==============================
+st.header("📊 Single Prediction")
+
+col1,col2 = st.columns(2)
+
+with col1:
+    airline = st.text_input("Airline")
+    origin = st.text_input("Origin")
+    dest = st.text_input("Destination")
+    dep_delay = st.text_input("Departure Delay")
+
+with col2:
+    distance = st.text_input("Distance")
+    crs_dep_time = st.text_input("Departure Time")
+
+    month = st.selectbox("Month", ["January","February","March","April","May","June","July","August","September","October","November","December"])
+    day_of_week = st.selectbox("Day", ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"])
+
+if st.button("🚀 Predict"):
+
+    df = pd.DataFrame([[airline,origin,dest,dep_delay,distance,crs_dep_time,month,day_of_week]],
+                      columns=["airline","origin","dest","dep_delay","distance","crs_dep_time","month","day_of_week"])
+
+    df = preprocess_single_input(df)
+    df = align_features(model, df)
+
+    pred = safe_predict(model, df)[0]
+
+    if mode=="Delay":
+        st.error("✈️ Flight DELAYED") if pred==1 else st.success("✈️ Flight ON TIME")
+    else:
+        st.error("✈️ Flight CANCELLED") if pred==1 else st.success("✈️ Flight NOT CANCELLED")
+
+# ==============================
+# CSV PREDICTION
 # ==============================
 st.header("📂 Upload Dataset")
 
@@ -195,7 +254,11 @@ if file:
             st.success("✅ Prediction Complete")
             st.dataframe(df)
 
-            st.download_button("📥 Download Result", df.to_csv(index=False), "output.csv")
+            st.download_button(
+                "📥 Download Result",
+                df.to_csv(index=False),
+                "output.csv"
+            )
 
         except Exception as e:
             st.error(f"❌ Error: {e}")
