@@ -202,6 +202,9 @@ if st.button("🚀 Predict"):
 # ==============================
 # CSV
 # ==============================
+# ==============================
+# CSV PREDICTION (FINAL)
+# ==============================
 st.header("📂 Upload Dataset")
 
 file = st.file_uploader("Upload CSV", type=["csv"])
@@ -213,26 +216,50 @@ if file:
 
     if st.button("🚀 Run Prediction"):
 
-        df_new = preprocess_input(df)
-        df_new = align_features(model, df_new)
+        try:
+            # Preprocess
+            df_new = preprocess_input(df)
 
-        preds = safe_predict(model, df_new)
+            # Load BOTH models
+            delay_model = load_model("Delay", model_choice)
+            cancel_model = load_model("Cancellation", model_choice)
 
-        result_col = ["Delayed" if x==1 else "On Time" for x in preds] if mode=="Delay" \
-                     else ["Cancelled" if x==1 else "Not Cancelled" for x in preds]
+            df_delay = align_features(delay_model, df_new)
+            df_cancel = align_features(cancel_model, df_new)
 
-        if "FL_NUMBER" in df.columns:
-            output_df = pd.DataFrame({
-                "Flight_Number": df["FL_NUMBER"],
-                "Result": result_col
-            })
-        else:
-            output_df = pd.DataFrame({
-                "Flight_Number": range(1, len(df)+1),
-                "Result": result_col
-            })
+            # Predictions
+            delay_preds = safe_predict(delay_model, df_delay)
+            cancel_preds = safe_predict(cancel_model, df_cancel)
 
-        st.success("✅ Prediction Complete")
-        st.dataframe(output_df)
+            # Convert results
+            delay_result = ["Delayed" if x==1 else "On Time" for x in delay_preds]
+            cancel_result = ["Cancelled" if x==1 else "Not Cancelled" for x in cancel_preds]
 
-        st.download_button("📥 Download Result", output_df.to_csv(index=False), "prediction.csv")
+            # Final output
+            if "FL_NUMBER" in df.columns:
+                output_df = pd.DataFrame({
+                    "FL_NUMBER": df["FL_NUMBER"],
+                    "Delay": delay_result,
+                    "Cancellation": cancel_result
+                })
+            else:
+                output_df = pd.DataFrame({
+                    "FL_NUMBER": range(1, len(df)+1),
+                    "Delay": delay_result,
+                    "Cancellation": cancel_result
+                })
+
+            st.success("✅ Prediction Complete")
+
+            # Show result
+            st.dataframe(output_df)
+
+            # Download
+            st.download_button(
+                "📥 Download Result",
+                output_df.to_csv(index=False),
+                "final_output.csv"
+            )
+
+        except Exception as e:
+            st.error(f"❌ Error: {e}")
