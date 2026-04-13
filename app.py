@@ -109,29 +109,26 @@ def load_model(mode, model_name):
 # ==============================
 def preprocess_input(df):
 
-    # Numeric
     for col in ["dep_delay","distance","crs_dep_time"]:
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
-    # Month
     month_map = {
         "january":1,"february":2,"march":3,"april":4,
         "may":5,"june":6,"july":7,"august":8,
         "september":9,"october":10,"november":11,"december":12
     }
+
     df["month"] = df["month"].astype(str).str.lower().map(month_map).fillna(1)
 
-    # Day
     day_map = {
         "monday":0,"tuesday":1,"wednesday":2,
         "thursday":3,"friday":4,"saturday":5,"sunday":6
     }
+
     df["day_of_week"] = df["day_of_week"].astype(str).str.lower().map(day_map).fillna(0)
 
-    # Auto weekend
     df["is_weekend"] = df["day_of_week"].apply(lambda x: 1 if x in [5,6] else 0)
 
-    # Encode categorical
     for col in ["airline","origin","dest"]:
         df[col] = df[col].astype(str).astype("category").cat.codes
 
@@ -147,6 +144,32 @@ model_choice = st.selectbox(
     ["Random Forest","Decision Tree","Logistic Regression","KNN","SVM","XGBoost"]
 )
 
+# ==============================
+# ACCURACY DISPLAY
+# ==============================
+delay_accuracy = {
+    "Random Forest": 91.90,
+    "SVM": 91.89,
+    "Decision Tree": 91.28,
+    "Logistic Regression": 91.05,
+    "KNN": 92.71,
+    "XGBoost": 89.45
+}
+
+cancel_accuracy = {
+    "Random Forest": 96.73,
+    "XGBoost": 95.21,
+    "Decision Tree": 97.11,
+    "KNN": 97.13,
+    "SVM": 43.80,
+    "Logistic Regression": 43.10
+}
+
+acc = delay_accuracy.get(model_choice) if mode=="Delay" else cancel_accuracy.get(model_choice)
+
+st.metric(label=f"{model_choice} ({mode}) Accuracy", value=f"{acc}%")
+
+# Load model
 model = load_model(mode, model_choice)
 
 # ==============================
@@ -165,8 +188,14 @@ with col1:
 with col2:
     distance = st.text_input("Distance")
     crs_dep_time = st.text_input("Scheduled Departure Time")
-    month = st.text_input("Month (January, February...)")
-    day_of_week = st.text_input("Day (Monday, Sunday...)")
+
+    month = st.selectbox("Month",
+        ["January","February","March","April","May","June",
+         "July","August","September","October","November","December"])
+
+    day_of_week = st.selectbox("Day",
+        ["Monday","Tuesday","Wednesday","Thursday",
+         "Friday","Saturday","Sunday"])
 
 # ==============================
 # PREDICTION
