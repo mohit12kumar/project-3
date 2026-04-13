@@ -16,7 +16,7 @@ st.set_page_config(page_title="Flight Prediction System", layout="wide")
 st.markdown("<h2 style='text-align:center;'>✈ Flight Delay & Cancellation Prediction</h2>", unsafe_allow_html=True)
 
 # ==============================
-# MODEL LOADER (ONE MODEL ONLY)
+# MODEL LOADER
 # ==============================
 @st.cache_resource
 def load_model(mode, model_name):
@@ -83,7 +83,7 @@ def align_features(model, df):
     return df
 
 # ==============================
-# PREPROCESS (SINGLE INPUT)
+# SINGLE INPUT PREPROCESS
 # ==============================
 def preprocess_single_input(df):
 
@@ -111,72 +111,6 @@ def preprocess_single_input(df):
     return df
 
 # ==============================
-# PREPROCESS (CSV DATASET)
-# ==============================
-def preprocess_input(df):
-
-    df.columns = [c.strip().lower() for c in df.columns]
-
-    required = {
-        "airline": None,
-        "origin": None,
-        "dest": None,
-        "dep_delay": None,
-        "distance": None,
-        "crs_dep_time": None,
-        "date": None
-    }
-
-    for col in df.columns:
-        if "airline" in col:
-            required["airline"] = col
-        elif col == "origin":
-            required["origin"] = col
-        elif col == "dest":
-            required["dest"] = col
-        elif "dep_delay" in col:
-            required["dep_delay"] = col
-        elif "distance" in col:
-            required["distance"] = col
-        elif "crs_dep_time" in col:
-            required["crs_dep_time"] = col
-        elif "date" in col:
-            required["date"] = col
-
-    new_df = pd.DataFrame()
-
-    new_df["airline"] = df[required["airline"]] if required["airline"] else "UNK"
-    new_df["origin"] = df[required["origin"]] if required["origin"] else "UNK"
-    new_df["dest"] = df[required["dest"]] if required["dest"] else "UNK"
-
-    new_df["dep_delay"] = pd.to_numeric(df[required["dep_delay"]], errors='coerce') if required["dep_delay"] else 0
-    new_df["distance"] = pd.to_numeric(df[required["distance"]], errors='coerce') if required["distance"] else 0
-    new_df["crs_dep_time"] = pd.to_numeric(df[required["crs_dep_time"]], errors='coerce') if required["crs_dep_time"] else 0
-
-    new_df = new_df.fillna(0)
-
-    if required["date"]:
-        dt = pd.to_datetime(df[required["date"]], errors='coerce')
-        new_df["month"] = dt.dt.month.fillna(1)
-        new_df["day_of_week"] = dt.dt.dayofweek.fillna(0)
-    else:
-        new_df["month"] = 1
-        new_df["day_of_week"] = 0
-
-    new_df["route"] = new_df["origin"].astype(str) + "_" + new_df["dest"].astype(str)
-    new_df["delay_per_distance"] = new_df["dep_delay"]/(new_df["distance"]+1)
-    new_df["is_weekend"] = new_df["day_of_week"].apply(lambda x:1 if x in [5,6] else 0)
-
-    new_df["time_category"] = new_df["crs_dep_time"].apply(
-        lambda x: 0 if x<600 else (1 if x<1200 else (2 if x<1800 else 3))
-    )
-
-    for col in new_df.select_dtypes(include="object").columns:
-        new_df[col] = new_df[col].astype("category").cat.codes
-
-    return new_df
-
-# ==============================
 # UI
 # ==============================
 mode = st.selectbox("Prediction Type", ["Delay","Cancellation"])
@@ -193,25 +127,35 @@ if model_choice in ["Random Forest","KNN"]:
 model = load_model(mode, model_choice)
 
 # ==============================
-# SINGLE PREDICTION
+# SINGLE PREDICTION UI
 # ==============================
 st.header("📊 Single Prediction")
+
+st.info("💡 Example: Airline = AA, Origin = JFK, Destination = LAX")
 
 col1,col2 = st.columns(2)
 
 with col1:
-    airline = st.text_input("Airline")
-    origin = st.text_input("Origin")
-    dest = st.text_input("Destination")
-    dep_delay = st.text_input("Departure Delay")
+    airline = st.text_input("Airline", placeholder="Example: AA")
+    origin = st.text_input("Origin Airport", placeholder="Example: JFK")
+    dest = st.text_input("Destination Airport", placeholder="Example: LAX")
+    dep_delay = st.text_input("Departure Delay (minutes)", placeholder="Example: 15")
 
 with col2:
-    distance = st.text_input("Distance")
-    crs_dep_time = st.text_input("Departure Time")
+    distance = st.text_input("Distance (miles)", placeholder="Example: 1200")
+    crs_dep_time = st.text_input("Departure Time (HHMM)", placeholder="Example: 1400")
 
-    month = st.selectbox("Month", ["January","February","March","April","May","June","July","August","September","October","November","December"])
-    day_of_week = st.selectbox("Day", ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"])
+    month = st.selectbox("Month",
+        ["January","February","March","April","May","June",
+         "July","August","September","October","November","December"])
 
+    day_of_week = st.selectbox("Day",
+        ["Monday","Tuesday","Wednesday","Thursday",
+         "Friday","Saturday","Sunday"])
+
+# ==============================
+# PREDICT
+# ==============================
 if st.button("🚀 Predict"):
 
     df = pd.DataFrame([[airline,origin,dest,dep_delay,distance,crs_dep_time,month,day_of_week]],
@@ -228,7 +172,7 @@ if st.button("🚀 Predict"):
         st.error("✈️ Flight CANCELLED") if pred==1 else st.success("✈️ Flight NOT CANCELLED")
 
 # ==============================
-# CSV PREDICTION
+# CSV SECTION
 # ==============================
 st.header("📂 Upload Dataset")
 
@@ -243,7 +187,7 @@ if file:
     if st.button("🚀 Run Prediction"):
 
         try:
-            df_new = preprocess_input(df)
+            df_new = preprocess_single_input(df)
             df_new = align_features(model, df_new)
 
             preds = safe_predict(model, df_new)
@@ -254,11 +198,7 @@ if file:
             st.success("✅ Prediction Complete")
             st.dataframe(df)
 
-            st.download_button(
-                "📥 Download Result",
-                df.to_csv(index=False),
-                "output.csv"
-            )
+            st.download_button("📥 Download Result", df.to_csv(index=False), "output.csv")
 
         except Exception as e:
             st.error(f"❌ Error: {e}")
