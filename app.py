@@ -134,8 +134,17 @@ def preprocess_input(df):
         "Friday":4,"Saturday":5,"Sunday":6
     }
 
-    new_df["month"] = df.get("month","January").map(month_map)
-    new_df["day_of_week"] = df.get("day_of_week","Monday").map(day_map)
+    # HANDLE MONTH
+    if "month" in df.columns:
+     new_df["month"] = df["month"].map(month_map)
+    else:
+     new_df["month"] = 1
+
+    # HANDLE DAY
+    if "day_of_week" in df.columns:
+     new_df["day_of_week"] = df["day_of_week"].map(day_map)
+    else:
+     new_df["day_of_week"] = 0
 
     new_df["is_weekend"] = new_df["day_of_week"].apply(lambda x:1 if x in [5,6] else 0)
 
