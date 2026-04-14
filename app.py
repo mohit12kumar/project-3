@@ -258,11 +258,18 @@ file = st.file_uploader("Upload CSV", type=["csv"])
 
 if file:
     df = pd.read_csv(file)
+
+    # 🔥 IMPORTANT: normalize column names
+    df.columns = df.columns.str.lower().str.strip()
+
     st.dataframe(df.head())
 
     if st.button("Run Prediction"):
         df_new = preprocess_input(df)
 
+        # ==============================
+        # APPLY SCALER
+        # ==============================
         if model_type == "Machine Learning" and model_choice in ["Logistic Regression","KNN","SVM"]:
             scaler = load_scaler(mode)
             if scaler:
@@ -273,16 +280,42 @@ if file:
             if scaler:
                 df_new = scaler.transform(df_new)
 
-        preds = safe_predict(model, df_new) if model_type=="Machine Learning" else (model.predict(df_new)>0.5).astype(int).flatten()
-
-        flight_no = df.get("FL_NUMBER", range(len(df)))
-
-        if mode=="Delay":
-            result = ["Delayed" if x==1 else "On Time" for x in preds]
-            out = pd.DataFrame({"FL_NUMBER":flight_no,"Delay":result})
+        # ==============================
+        # PREDICTION
+        # ==============================
+        if model_type == "Machine Learning":
+            preds = safe_predict(model, df_new)
         else:
-            result = ["Cancelled" if x==1 else "Not Cancelled" for x in preds]
-            out = pd.DataFrame({"FL_NUMBER":flight_no,"Cancellation":result})
+            preds = (model.predict(df_new) > 0.5).astype(int).flatten()
+
+        # ==============================
+        # 🔥 FIX FL_NUMBER (IMPORTANT)
+        # ==============================
+        if "fl_number" in df.columns:
+            flight_no = df["fl_number"]
+        else:
+            flight_no = range(len(df))
+
+        # ==============================
+        # OUTPUT
+        # ==============================
+        if mode == "Delay":
+            result = ["Delayed" if x == 1 else "On Time" for x in preds]
+            out = pd.DataFrame({
+                "FL_NUMBER": flight_no,
+                "Delay": result
+            })
+        else:
+            result = ["Cancelled" if x == 1 else "Not Cancelled" for x in preds]
+            out = pd.DataFrame({
+                "FL_NUMBER": flight_no,
+                "Cancellation": result
+            })
 
         st.dataframe(out)
-        st.download_button("Download", out.to_csv(index=False))
+
+        st.download_button(
+            "📥 Download",
+            out.to_csv(index=False),
+            file_name="prediction.csv"
+        )
