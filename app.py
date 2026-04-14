@@ -178,7 +178,10 @@ if st.button("Predict"):
     else:
         pred = model.predict(df)[0]
 
-    result = "Delayed" if pred==1 else "On Time" if mode=="Delay" else ("Cancelled" if pred==1 else "Not Cancelled")
+    if mode == "Delay":
+        result = "Delayed" if pred == 1 else "On Time"
+    else:
+        result = "Cancelled" if pred == 1 else "Not Cancelled"
 
     st.success(result)
 
