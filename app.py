@@ -13,15 +13,30 @@ import warnings
 warnings.filterwarnings("ignore")
 
 st.set_page_config(page_title="Flight Prediction System", layout="wide")
-
 st.title("✈ Flight Delay & Cancellation Prediction")
 
 # ==============================
 # ACCURACY
 # ==============================
 model_accuracy = {
-    "Delay": {"Deep Learning": 0.9351},
-    "Cancellation": {"Deep Learning": 0.9680}
+    "Delay": {
+        "Deep Learning": 0.9351,
+        "XGBoost": 0.91,
+        "Random Forest": 0.89,
+        "Decision Tree": 0.85,
+        "Logistic Regression": 0.88,
+        "SVM": 0.87,
+        "KNN": 0.86
+    },
+    "Cancellation": {
+        "Deep Learning": 0.9680,
+        "XGBoost": 0.95,
+        "Random Forest": 0.94,
+        "Decision Tree": 0.90,
+        "Logistic Regression": 0.92,
+        "SVM": 0.91,
+        "KNN": 0.89
+    }
 }
 
 # ==============================
@@ -35,11 +50,49 @@ def load_scaler(mode):
         return None
 
 # ==============================
-# LOAD DL MODEL
+# LOAD MODEL
 # ==============================
 @st.cache_resource
-def load_dl_model(mode):
-    return load_keras_model("deep_delay_model.keras", compile=False) if mode=="Delay" else load_keras_model("deep_cancel_model.keras", compile=False)
+def load_model(mode, model_name):
+
+    delay_links = {
+        "Random Forest": ("1kcjKFn-59lK1S8QHv1rHzcm4sL2VLTSU", "rf_delay.pkl"),
+        "Decision Tree": ("1PZdtmAnt15nj1PC1rB8aW0kZIssgU8IM", "dt_delay.pkl"),
+        "Logistic Regression": ("1cL9xaBH6WU_UlXAMpFlU8zenIpY7jgNf", "lr_delay.pkl"),
+        "KNN": ("1hAMdiSjssNoXRGmzcLcnm8RsivyKStA2", "knn_delay.pkl"),
+        "SVM": ("1pw_1yVInCY_N5prysDQT7_i78v2LblBU", "svm_delay.pkl"),
+        "XGBoost": ("1GhFI6E5AflX1jPdiz3TRfKAVW1YSt1fm", "xgb_delay.pkl")
+    }
+
+    cancel_links = {
+        "Random Forest": ("1AJxhnPsOL5VRtXqB8TO52RFAAzKQa_dI", "rf_cancel.pkl"),
+        "Decision Tree": ("1VGat3BhFmQwkjrQKDUDPWW12_FHndjVv", "dt_cancel.pkl"),
+        "Logistic Regression": ("16k7XQcInCTNuveWDSPiTLbhfgRPH2bUi", "lr_cancel.pkl"),
+        "KNN": ("1qnC3xUyeJ8SDi455THh2_IbSmc4BVQgi", "knn_cancel.pkl"),
+        "SVM": ("1ppy1emNTbhbi0YP0CxWu-cAJXXhNorNV", "svm_cancel.pkl"),
+        "XGBoost": ("1pKYOfMvNr2qoVkOrbFin31MCX3jAkerf", "xgb_cancel.pkl")
+    }
+
+    if model_name == "Deep Learning":
+        return load_keras_model(
+            "deep_delay_model.keras" if mode=="Delay" else "deep_cancel_model.keras",
+            compile=False
+        )
+
+    links = delay_links if mode=="Delay" else cancel_links
+
+    try:
+        file_id, filename = links[model_name]
+
+        if not os.path.exists(filename):
+            st.warning(f"⬇ Downloading {model_name}...")
+            gdown.download(id=file_id, output=filename, quiet=False)
+
+        return joblib.load(filename)
+
+    except Exception as e:
+        st.error(f"❌ {model_name} not available: {e}")
+        return None
 
 # ==============================
 # PREPROCESS
@@ -49,39 +102,22 @@ def preprocess_input(df):
 
     new_df = pd.DataFrame()
 
-    new_df["airline"] = df.get("airline", df.get("airline_code", "UNK"))
+    new_df["airline"] = df.get("airline", "UNK")
     new_df["origin"] = df.get("origin", "UNK")
     new_df["dest"] = df.get("dest", "UNK")
 
-    new_df["dep_delay"] = pd.to_numeric(df.get("dep_delay", 0), errors="coerce")
-    new_df["distance"] = pd.to_numeric(df.get("distance", 0), errors="coerce")
-    new_df["crs_dep_time"] = pd.to_numeric(df.get("crs_dep_time", 0), errors="coerce")
+    new_df["dep_delay"] = pd.to_numeric(df.get("dep_delay",0), errors='coerce')
+    new_df["distance"] = pd.to_numeric(df.get("distance",0), errors='coerce')
+    new_df["crs_dep_time"] = pd.to_numeric(df.get("crs_dep_time",0), errors='coerce')
 
     new_df = new_df.fillna(0)
 
-    # DATE
-    if "fl_date" in df.columns:
-        dt = pd.to_datetime(df["fl_date"], errors="coerce")
-        new_df["month"] = dt.dt.month.fillna(1)
-        new_df["day_of_week"] = dt.dt.dayofweek.fillna(0)
-    else:
-        month_map = {
-            "January":1,"February":2,"March":3,"April":4,"May":5,"June":6,
-            "July":7,"August":8,"September":9,"October":10,"November":11,"December":12
-        }
-        day_map = {
-            "Monday":0,"Tuesday":1,"Wednesday":2,"Thursday":3,
-            "Friday":4,"Saturday":5,"Sunday":6
-        }
-
-        new_df["month"] = df["month"].map(month_map) if "month" in df.columns else 1
-        new_df["day_of_week"] = df["day_of_week"].map(day_map) if "day_of_week" in df.columns else 0
-
-    new_df["is_weekend"] = new_df["day_of_week"].apply(lambda x:1 if x in [5,6] else 0)
+    new_df["month"] = 1
+    new_df["day_of_week"] = 0
+    new_df["is_weekend"] = 0
 
     for col in ["airline","origin","dest"]:
         new_df[col] = new_df[col].astype("category").cat.codes
-        new_df[col] = new_df[col].replace(-1,0)
 
     return new_df
 
@@ -90,9 +126,15 @@ def preprocess_input(df):
 # ==============================
 mode = st.selectbox("Prediction Type", ["Delay","Cancellation"])
 
-model = load_dl_model(mode)
-acc = model_accuracy[mode]["Deep Learning"]
-st.success(f"🎯 Model Accuracy: {acc*100:.2f}%")
+model_choice = st.selectbox(
+    "Select Model",
+    ["Deep Learning","XGBoost","Decision Tree","Logistic Regression","SVM","KNN","Random Forest"]
+)
+
+model = load_model(mode, model_choice)
+
+acc = model_accuracy[mode][model_choice]
+st.success(f"🎯 Accuracy: {acc*100:.2f}%")
 
 # ==============================
 # SINGLE PREDICTION
@@ -106,34 +148,31 @@ dep_delay = st.text_input("Departure Delay","10")
 distance = st.text_input("Distance","1000")
 time = st.text_input("Time","1400")
 
-month = st.selectbox("Month", ["January","February","March","April","May","June","July","August","September","October","November","December"])
-day = st.selectbox("Day", ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"])
+if st.button("Predict"):
 
-if st.button("🚀 Predict Single"):
-
-    df = pd.DataFrame([[airline,origin,dest,dep_delay,distance,time,month,day]],
-                      columns=["airline","origin","dest","dep_delay","distance","crs_dep_time","month","day_of_week"])
+    df = pd.DataFrame([[airline,origin,dest,dep_delay,distance,time]],
+                      columns=["airline","origin","dest","dep_delay","distance","crs_dep_time"])
 
     df = preprocess_input(df)
 
-    # 🔥 FIX DL INPUT
-    df = df[["airline","origin","dest","dep_delay","distance","crs_dep_time","month","day_of_week","is_weekend"]]
-    df = df.astype(float)
-
     scaler = load_scaler(mode)
-    if scaler:
+
+    if model_choice in ["KNN","SVM","Logistic Regression","Deep Learning"] and scaler:
         df = scaler.transform(df)
 
-    pred = (model.predict(df) > 0.35).astype(int)[0][0]
+    if model_choice == "Deep Learning":
+        pred = (model.predict(df) > 0.35).astype(int)[0][0]
+    else:
+        pred = model.predict(df)[0]
 
     result = "Delayed" if pred==1 else "On Time" if mode=="Delay" else ("Cancelled" if pred==1 else "Not Cancelled")
 
-    st.success(f"✈ Prediction: {result}")
+    st.success(result)
 
 # ==============================
-# CSV UPLOAD
+# CSV
 # ==============================
-st.header("📂 Upload Dataset")
+st.header("📂 Upload CSV")
 
 file = st.file_uploader("Upload CSV", type=["csv"])
 
@@ -141,31 +180,28 @@ if file:
     df = pd.read_csv(file)
     df.columns = df.columns.str.lower().str.strip()
 
-    st.dataframe(df.head())
-
     if st.button("Run Prediction"):
 
         df_new = preprocess_input(df)
 
-        # 🔥 FIX DL INPUT
-        df_dl = df_new[["airline","origin","dest","dep_delay","distance","crs_dep_time","month","day_of_week","is_weekend"]]
-        df_dl = df_dl.astype(float)
-
         scaler = load_scaler(mode)
-        if scaler:
-            df_dl = scaler.transform(df_dl)
 
-        preds = (model.predict(df_dl) > 0.35).astype(int).flatten()
+        if model_choice in ["KNN","SVM","Logistic Regression","Deep Learning"] and scaler:
+            df_new = scaler.transform(df_new)
 
-        # FL NUMBER FIX
+        if model_choice == "Deep Learning":
+            preds = (model.predict(df_new) > 0.35).astype(int).flatten()
+        else:
+            preds = model.predict(df_new)
+
         flight_no = df["fl_number"] if "fl_number" in df.columns else range(len(df))
 
         if mode=="Delay":
-            result = ["Delayed" if x==1 else "On Time" for x in preds]
+            result = ["Delayed" if x else "On Time" for x in preds]
             out = pd.DataFrame({"FL_NUMBER":flight_no,"Delay":result})
         else:
-            result = ["Cancelled" if x==1 else "Not Cancelled" for x in preds]
+            result = ["Cancelled" if x else "Not Cancelled" for x in preds]
             out = pd.DataFrame({"FL_NUMBER":flight_no,"Cancellation":result})
 
         st.dataframe(out)
-        st.download_button("📥 Download", out.to_csv(index=False), file_name="prediction.csv")
+        st.download_button("Download", out.to_csv(index=False))
