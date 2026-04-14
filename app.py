@@ -13,6 +13,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 st.set_page_config(page_title="Flight Prediction System", layout="wide")
+
 st.title("✈ Flight Delay & Cancellation Prediction")
 
 # ==============================
@@ -55,6 +56,13 @@ def load_scaler(mode):
 @st.cache_resource
 def load_model(mode, model_name):
 
+    # DL
+    if model_name == "Deep Learning":
+        return load_keras_model(
+            "deep_delay_model.keras" if mode=="Delay" else "deep_cancel_model.keras",
+            compile=False
+        )
+
     delay_links = {
         "Random Forest": ("1kcjKFn-59lK1S8QHv1rHzcm4sL2VLTSU", "rf_delay.pkl"),
         "Decision Tree": ("1PZdtmAnt15nj1PC1rB8aW0kZIssgU8IM", "dt_delay.pkl"),
@@ -73,38 +81,36 @@ def load_model(mode, model_name):
         "XGBoost": ("1pKYOfMvNr2qoVkOrbFin31MCX3jAkerf", "xgb_cancel.pkl")
     }
 
-    if model_name == "Deep Learning":
-        return load_keras_model(
-            "deep_delay_model.keras" if mode=="Delay" else "deep_cancel_model.keras",
-            compile=False
-        )
-
     links = delay_links if mode=="Delay" else cancel_links
 
-    try:
-        file_id, filename = links[model_name]
+    file_id, filename = links[model_name]
 
-        if not os.path.exists(filename):
-            st.warning(f"⬇ Downloading {model_name}...")
-            gdown.download(id=file_id, output=filename, quiet=False)
+    if not os.path.exists(filename):
+        st.warning(f"⬇ Downloading {model_name}...")
+        gdown.download(id=file_id, output=filename, quiet=False)
 
-        return joblib.load(filename)
-
-    except Exception as e:
-        st.error(f"❌ {model_name} not available: {e}")
-        return None
+    return joblib.load(filename)
 
 # ==============================
-# PREPROCESS
+# SAFE PREDICT
+# ==============================
+def safe_predict(model, data):
+    if hasattr(model, "predict_proba"):
+        probs = model.predict_proba(data)[:,1]
+        return (probs > 0.4).astype(int)
+    return model.predict(data)
+
+# ==============================
+# PREPROCESS (UNCHANGED)
 # ==============================
 def preprocess_input(df):
     df.columns = df.columns.str.lower().str.strip()
 
     new_df = pd.DataFrame()
 
-    new_df["airline"] = df.get("airline", "UNK")
-    new_df["origin"] = df.get("origin", "UNK")
-    new_df["dest"] = df.get("dest", "UNK")
+    new_df["airline"] = df.get("airline","UNK")
+    new_df["origin"] = df.get("origin","UNK")
+    new_df["dest"] = df.get("dest","UNK")
 
     new_df["dep_delay"] = pd.to_numeric(df.get("dep_delay",0), errors='coerce')
     new_df["distance"] = pd.to_numeric(df.get("distance",0), errors='coerce')
@@ -126,15 +132,22 @@ def preprocess_input(df):
 # ==============================
 mode = st.selectbox("Prediction Type", ["Delay","Cancellation"])
 
-model_choice = st.selectbox(
-    "Select Model",
-    ["Deep Learning","XGBoost","Decision Tree","Logistic Regression","SVM","KNN","Random Forest"]
-)
+# 🔥 NEW DROPDOWN
+model_type = st.selectbox("Select Model Type", ["Machine Learning","Deep Learning"])
+
+if model_type == "Machine Learning":
+    model_choice = st.selectbox(
+        "Select ML Model",
+        ["XGBoost","Decision Tree","Logistic Regression","SVM","KNN","Random Forest"]
+    )
+else:
+    model_choice = "Deep Learning"
 
 model = load_model(mode, model_choice)
 
+# SHOW ACCURACY
 acc = model_accuracy[mode][model_choice]
-st.success(f"🎯 Accuracy: {acc*100:.2f}%")
+st.success(f"🎯 {model_choice} Accuracy: {acc*100:.2f}%")
 
 # ==============================
 # SINGLE PREDICTION
