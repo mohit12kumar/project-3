@@ -113,43 +113,56 @@ def preprocess_input(df):
 
     new_df = pd.DataFrame()
 
-    new_df["airline"] = df.get("airline","UNK")
-    new_df["origin"] = df.get("origin","UNK")
-    new_df["dest"] = df.get("dest","UNK")
+    # ==============================
+    # COLUMN MAPPING (SMART)
+    # ==============================
+    new_df["airline"] = df.get("airline", df.get("airline_code", "UNK"))
+    new_df["origin"] = df.get("origin", "UNK")
+    new_df["dest"] = df.get("dest", "UNK")
 
-    new_df["dep_delay"] = pd.to_numeric(df.get("dep_delay",0), errors='coerce')
-    new_df["distance"] = pd.to_numeric(df.get("distance",0), errors='coerce')
-    new_df["crs_dep_time"] = pd.to_numeric(df.get("crs_dep_time",0), errors='coerce')
+    new_df["dep_delay"] = pd.to_numeric(df.get("dep_delay", 0), errors="coerce")
+    new_df["distance"] = pd.to_numeric(df.get("distance", 0), errors="coerce")
+    new_df["crs_dep_time"] = pd.to_numeric(df.get("crs_dep_time", 0), errors="coerce")
 
     new_df = new_df.fillna(0)
 
-    # month/day mapping
-    month_map = {
-        "January":1,"February":2,"March":3,"April":4,"May":5,"June":6,
-        "July":7,"August":8,"September":9,"October":10,"November":11,"December":12
-    }
-
-    day_map = {
-        "Monday":0,"Tuesday":1,"Wednesday":2,"Thursday":3,
-        "Friday":4,"Saturday":5,"Sunday":6
-    }
-
-    # HANDLE MONTH
-    if "month" in df.columns:
-     new_df["month"] = df["month"].map(month_map)
+    # ==============================
+    # DATE HANDLING
+    # ==============================
+    if "fl_date" in df.columns:
+        dt = pd.to_datetime(df["fl_date"], errors="coerce")
+        new_df["month"] = dt.dt.month.fillna(1)
+        new_df["day_of_week"] = dt.dt.dayofweek.fillna(0)
     else:
-     new_df["month"] = 1
+        # Handle dropdown input
+        month_map = {
+            "January":1,"February":2,"March":3,"April":4,"May":5,"June":6,
+            "July":7,"August":8,"September":9,"October":10,"November":11,"December":12
+        }
 
-    # HANDLE DAY
-    if "day_of_week" in df.columns:
-     new_df["day_of_week"] = df["day_of_week"].map(day_map)
-    else:
-     new_df["day_of_week"] = 0
+        day_map = {
+            "Monday":0,"Tuesday":1,"Wednesday":2,"Thursday":3,
+            "Friday":4,"Saturday":5,"Sunday":6
+        }
 
-    new_df["is_weekend"] = new_df["day_of_week"].apply(lambda x:1 if x in [5,6] else 0)
+        if "month" in df.columns:
+            new_df["month"] = df["month"].map(month_map).fillna(1)
+        else:
+            new_df["month"] = 1
 
+        if "day_of_week" in df.columns:
+            new_df["day_of_week"] = df["day_of_week"].map(day_map).fillna(0)
+        else:
+            new_df["day_of_week"] = 0
+
+    new_df["is_weekend"] = new_df["day_of_week"].apply(lambda x: 1 if x in [5,6] else 0)
+
+    # ==============================
+    # ⚠️ SAFE ENCODING (TEMP FIX)
+    # ==============================
     for col in ["airline","origin","dest"]:
         new_df[col] = new_df[col].astype("category").cat.codes
+        new_df[col] = new_df[col].replace(-1, 0)
 
     return new_df
 
